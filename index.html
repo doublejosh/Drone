@@ -1,0 +1,812 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Drone Synth</title>
+<!-- Material Symbols, subset to the icons used. icon_names MUST stay alphabetical; add new names here or they render as text. -->
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200&icon_names=add,air,airwave,autoplay,avg_pace,compare_arrows,contrast,filter_alt,gradient,height,layers,local_fire_department,pest_control,play_arrow,rainy,remove,shuffle,spatial_audio,speed,stop,swap_vert,trending_up,volume_up,water,waves&display=block">
+<style>
+  :root {
+    --bg: #0d0f14;
+    --panel: #161a22;
+    --line: #262c38;
+    --text: #e6e9ef;
+    --muted: #8a93a6;
+    --accent: #7cc4ff;
+    --accent-2: #b48cff;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font: 15px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  main { max-width: 860px; margin: 0 auto; padding: 24px 16px 48px; }
+  h1 { font-size: 14px; letter-spacing: .2em; text-transform: uppercase; color: var(--muted); margin: 0 0 16px; font-weight: 600; }
+
+  .display {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    padding: 20px;
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 12px 20px;
+    align-items: center;
+  }
+  .key { font-size: clamp(44px, 10vw, 72px); font-weight: 700; line-height: 1; letter-spacing: -.02em; }
+  .key small { font-size: .45em; font-weight: 500; color: var(--accent); margin-left: .25em; }
+  .meta { color: var(--muted); font-variant-numeric: tabular-nums; margin-top: 8px; }
+  .meta b { color: var(--text); font-weight: 600; }
+  canvas { grid-column: 1 / -1; width: 100%; height: 110px; display: block; border-radius: 8px; background: #0a0c10; }
+
+  .play {
+    width: 88px; height: 88px; border-radius: 50%;
+    border: 2px solid var(--accent);
+    background: transparent; color: var(--accent);
+    font-size: 15px; font-weight: 700; letter-spacing: .1em; cursor: pointer;
+    transition: background .2s, color .2s;
+  }
+  .play.on { background: var(--accent); color: var(--bg); }
+
+  section {
+    margin-top: 16px;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    padding: 16px 20px;
+  }
+  section h2 { font-size: 12px; letter-spacing: .15em; text-transform: uppercase; color: var(--muted); margin: 0 0 12px; font-weight: 600; }
+
+  /* Piano octave: 7 flex white keys; black keys absolutely positioned over the gaps (left set in JS). */
+  .piano { --gap: 3px; --bw: calc((100% - 6 * var(--gap)) / 7 * 0.6); position: relative; display: flex; gap: var(--gap); height: 130px; user-select: none; }
+  .piano button {
+    font: inherit; font-weight: 600; cursor: pointer; border: 0; padding: 0 0 10px;
+    display: flex; align-items: flex-end; justify-content: center; transition: background .15s, color .15s;
+  }
+  .pk-white { flex: 1; background: #d9dde5; color: #4a5266; border-radius: 0 0 8px 8px; }
+  .pk-white:hover { background: #f0f2f6; }
+  .pk-black {
+    position: absolute; top: 0; z-index: 1; width: var(--bw); height: 60%;
+    background: #0a0c10; color: var(--muted); font-size: 12px;
+    outline: 1px solid var(--line); border-radius: 0 0 6px 6px;
+  }
+  .pk-black:hover { background: #262c38; }
+  .piano button.active { background: var(--accent); color: var(--bg); }
+  .row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; align-items: center; }
+  button.chip {
+    background: #1d222c; color: var(--text);
+    border: 1px solid var(--line); border-radius: 8px;
+    padding: 9px 4px; font: inherit; font-weight: 600; cursor: pointer;
+    min-width: 0;
+  }
+  .row button.chip { padding: 8px 14px; }
+  button.chip:hover { border-color: #3a4252; }
+  button.chip:disabled { opacity: .35; cursor: default; border-color: var(--line); }
+  button.chip.active { background: var(--accent); color: var(--bg); border-color: var(--accent); }
+  button.chip.toggle.active { background: var(--accent-2); border-color: var(--accent-2); }
+  .label { color: var(--muted); font-size: 13px; margin-right: 4px; }
+  .tempo input[type=range] { flex: 1; min-width: 120px; width: auto; }
+  input[type=number] {
+    width: 64px; background: #1d222c; color: var(--text);
+    border: 1px solid var(--line); border-radius: 8px; padding: 7px 8px;
+    font: inherit; font-weight: 600; font-variant-numeric: tabular-nums;
+  }
+  input[type=number]:focus { outline: none; border-color: var(--accent); }
+
+  .sliders { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px 28px; }
+  .slider label { display: flex; justify-content: space-between; align-items: center; font-size: 13px; color: var(--muted); margin-bottom: 4px; }
+  .slider output { color: var(--text); font-variant-numeric: tabular-nums; }
+  .slider-name { display: inline-flex; align-items: center; gap: 6px; }
+  .slider-name .ms { font-size: 18px; }
+  input[type=range] { width: 100%; accent-color: var(--accent); }
+
+  .amb { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 14px 20px; }
+  .amb-item { display: flex; flex-direction: column; gap: 8px; }
+  .amb-item button.chip { padding: 7px 10px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
+
+  /* Icons: Material Symbols ligatures (<span class="ms">name</span>) + inline SVG wave glyphs. */
+  .ms {
+    font-family: 'Material Symbols Rounded'; font-weight: normal; font-style: normal;
+    font-size: 20px; line-height: 1; letter-spacing: normal; text-transform: none;
+    display: inline-block; white-space: nowrap; direction: ltr; vertical-align: middle;
+    font-feature-settings: 'liga'; -webkit-font-smoothing: antialiased;
+    font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+  }
+  .label.ms { font-size: 20px; margin-right: 2px; cursor: default; }
+  .active > .ms, .play.on .ms { font-variation-settings: 'FILL' 1, 'wght' 500, 'GRAD' 0, 'opsz' 24; }
+  .row button.chip.icon { padding: 6px 10px; line-height: 0; }
+  .wave-svg { width: 28px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+  .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  .play .ms { font-size: 44px; }
+
+  .hint { color: var(--muted); font-size: 12px; margin-top: 16px; text-align: center; }
+  kbd { border: 1px solid var(--line); border-radius: 4px; padding: 1px 5px; font-size: 11px; }
+
+  @media (max-width: 560px) {
+    .piano { height: 110px; }
+    .play { width: 72px; height: 72px; }
+  }
+</style>
+</head>
+<body>
+<main>
+  <h1>Drone Synth</h1>
+
+  <div class="display">
+    <div>
+      <div class="key" id="keyName">A<small>minor</small></div>
+      <div class="meta">Root <b id="rootHz">110.0 Hz</b> · Chord <b id="chordTones">A · C · E</b></div>
+    </div>
+    <button class="play" id="playBtn" aria-pressed="false" aria-label="Play"><span class="ms" aria-hidden="true">play_arrow</span></button>
+    <canvas id="scope"></canvas>
+  </div>
+
+  <section>
+    <h2>Key</h2>
+    <div class="piano" id="notes"></div>
+    <div class="row">
+      <span class="label ms" role="img" aria-label="Mode" title="Mode">contrast</span>
+      <button class="chip" data-mode="major">Major</button>
+      <button class="chip" data-mode="minor">Minor</button>
+      <span style="flex:1"></span>
+      <button class="chip icon" id="randomBtn" title="Random key" aria-label="Random key"><span class="ms" aria-hidden="true">shuffle</span></button>
+    </div>
+    <div class="row">
+      <span class="label ms" role="img" aria-label="Octave" title="Octave">swap_vert</span>
+      <span id="octaves" style="display:contents"></span>
+    </div>
+  </section>
+
+  <section>
+    <h2>Slots</h2>
+    <div class="row" style="margin-top:0">
+      <span id="slots" style="display:contents"></span>
+      <button class="chip icon" id="addSlot" title="Add slot (copy of current)" aria-label="Add slot"><span class="ms" aria-hidden="true">add</span></button>
+      <button class="chip icon" id="removeSlot" title="Remove current slot" aria-label="Remove slot"><span class="ms" aria-hidden="true">remove</span></button>
+      <span style="flex:1"></span>
+      <span class="label"><kbd>Shift</kbd> next slot</span>
+    </div>
+    <div class="row tempo">
+      <button class="chip toggle icon" id="autoBtn" aria-pressed="false" title="Auto-advance slots" aria-label="Auto-advance slots"><span class="ms" aria-hidden="true">autoplay</span></button>
+      <label class="label ms" for="bpmRange" title="Tempo"><span aria-hidden="true">avg_pace</span><span class="sr">Tempo</span></label>
+      <input type="range" id="bpmRange" min="1" max="240" step="1">
+      <input type="number" id="bpmInput" min="1" max="240" step="1" aria-label="Tempo in BPM">
+      <span class="label">BPM</span>
+    </div>
+  </section>
+
+  <section>
+    <h2>Tone</h2>
+    <div class="row" style="margin-top:0">
+      <span class="label ms" role="img" aria-label="Wave" title="Wave">airwave</span>
+      <span id="waves" style="display:contents"></span>
+    </div>
+    <div class="row">
+      <span class="label ms" role="img" aria-label="Voices" title="Voices">layers</span>
+      <button class="chip toggle" data-voice="sub">Sub</button>
+      <button class="chip toggle" data-voice="third">3rd</button>
+      <button class="chip toggle" data-voice="fifth">5th</button>
+      <button class="chip toggle" data-voice="up">Octave ↑</button>
+    </div>
+  </section>
+
+  <section>
+    <h2>Shape</h2>
+    <div class="sliders" id="sliders"></div>
+  </section>
+
+  <section>
+    <h2>Ambience</h2>
+    <div class="amb" id="ambience"></div>
+  </section>
+
+  <p class="hint"><kbd>Space</kbd> play/stop · <kbd>←</kbd><kbd>→</kbd> change key · <kbd>↑</kbd><kbd>↓</kbd> octave · <kbd>M</kbd> major/minor · <kbd>Shift</kbd> next slot</p>
+</main>
+
+<script>
+const NOTES = ['C', 'C♯', 'D', 'E♭', 'E', 'F', 'F♯', 'G', 'A♭', 'A', 'B♭', 'B'];
+const WAVES = ['sine', 'triangle', 'sawtooth', 'square'];
+// Inline SVG glyph per wave (Material Symbols has no waveform icons). viewBox 0 0 24 14.
+const WAVE_PATHS = {
+  sine:     'M1 7 Q6.5 -3.5 12 7 T23 7',
+  triangle: 'M1 7 L6.5 1.5 L17.5 12.5 L23 7',
+  sawtooth: 'M1 12.5 L12 1.5 V12.5 L23 1.5 V12.5',
+  square:   'M1 12.5 V1.5 H12 V12.5 H23 V1.5',
+};
+
+// Voice definitions: semitone offset from root (third depends on mode) and mix level.
+const VOICES = {
+  root:  { level: 1.0 },
+  sub:   { offset: -12, level: 0.7 },
+  third: { offset: null, level: 0.35 },
+  fifth: { offset: 7, level: 0.55 },
+  up:    { offset: 12, level: 0.6 },  // saw/square already contain the octave, so this needs to be fairly loud to be heard
+};
+
+const state = {
+  note: 9, mode: 'minor', octave: 2, wave: 'sawtooth',
+  voices: { root: true, sub: true, third: false, fifth: true, up: false },
+  detune: 8, cutoff: 900, lfoRate: 0.08, lfoDepth: 400, reverb: 0.45, glide: 1.5, waveFade: 1, volume: 0.6,
+  playing: false,
+  // Key slots cycled with Shift. note/mode/octave above always hold the ACTIVE slot;
+  // slots[] is only authoritative for inactive ones (active is saved back via saveSlot()).
+  slot: 0,
+  auto: false, bpm: 30,  // Auto mode: advance one slot per beat while playing
+  // Ambience layers (see SOUNDS): on/off + level 0..1
+  ambience: {
+    rain: { on: false, level: 0.5 }, wind: { on: false, level: 0.5 }, waves: { on: false, level: 0.5 },
+    stream: { on: false, level: 0.5 }, fire: { on: false, level: 0.5 }, crickets: { on: false, level: 0.4 },
+  },
+  slots: [{ note: 9, mode: 'minor', octave: 2 }, { note: 2, mode: 'minor', octave: 2 }],
+};
+
+const MAX_SLOTS = 12;
+const saveSlot = () => { state.slots[state.slot] = { note: state.note, mode: state.mode, octave: state.octave }; };
+const loadSlot = i => { state.slot = i; Object.assign(state, state.slots[i]); applyPitch(); };
+
+function selectSlot(i) {
+  if (i === state.slot) return;
+  saveSlot(); loadSlot(i); render();
+}
+
+// Inserts a copy of the active slot right after it and selects it (pitch unchanged).
+function addSlot() {
+  if (state.slots.length >= MAX_SLOTS) return;
+  saveSlot();
+  state.slots.splice(state.slot + 1, 0, { ...state.slots[state.slot] });
+  state.slot++;
+  render();
+}
+
+// Deletes the active slot; the slot that slides into its place (or the new last one) becomes active.
+function removeSlot() {
+  if (state.slots.length <= 1) return;
+  state.slots.splice(state.slot, 1);
+  loadSlot(Math.min(state.slot, state.slots.length - 1));
+  render();
+}
+
+const nextSlot = () => selectSlot((state.slot + 1) % state.slots.length);
+
+// ---------- Auto mode (slot sequencer) ----------
+// Steps are timed from lastStep, so changing BPM mid-beat re-times the pending step
+// instead of restarting the countdown (dragging the slider won't stall it).
+const BPM_MIN = 1, BPM_MAX = 240;
+let autoTimer, lastStep = 0;
+
+function scheduleAuto() {
+  clearTimeout(autoTimer);
+  if (!state.auto) return;
+  const wait = Math.max(0, lastStep + 60000 / state.bpm - performance.now());
+  autoTimer = setTimeout(() => {
+    lastStep = performance.now();
+    if (state.playing) nextSlot();
+    scheduleAuto();
+  }, wait);
+}
+
+function setAuto(on) {
+  state.auto = on;
+  lastStep = performance.now();
+  scheduleAuto();
+  render();
+}
+
+function setBpm(v) {
+  if (!Number.isFinite(v)) return;
+  state.bpm = Math.min(BPM_MAX, Math.max(BPM_MIN, Math.round(v)));
+  scheduleAuto();
+}
+
+const SLIDERS = [
+  // icon = Material Symbols name (must also be listed in the <link> icon_names); label = tooltip + screen-reader text.
+  { key: 'volume',   label: 'Volume',    icon: 'volume_up',      min: 0,    max: 1,    step: 0.01, fmt: v => Math.round(v * 100) + '%' },
+  { key: 'cutoff',   label: 'Filter',    icon: 'filter_alt',     min: 80,   max: 8000, step: 1,    fmt: v => Math.round(v) + ' Hz', log: true },
+  { key: 'detune',   label: 'Detune',    icon: 'compare_arrows', min: 0,    max: 30,   step: 0.5,  fmt: v => v + ' ¢' },
+  { key: 'lfoRate',  label: 'LFO rate',  icon: 'speed',          min: 0.01, max: 2,    step: 0.01, fmt: v => v.toFixed(2) + ' Hz', log: true },
+  { key: 'lfoDepth', label: 'LFO depth', icon: 'height',         min: 0,    max: 2000, step: 1,    fmt: v => Math.round(v) + ' Hz' },
+  { key: 'reverb',   label: 'Reverb',    icon: 'spatial_audio',  min: 0,    max: 1,    step: 0.01, fmt: v => Math.round(v * 100) + '%' },
+  { key: 'glide',    label: 'Glide',     icon: 'trending_up',    min: 0,    max: 6,    step: 0.1,  fmt: v => v.toFixed(1) + ' s' },
+  { key: 'waveFade', label: 'Tone fade', icon: 'gradient',       min: 0,    max: 6,    step: 0.1,  fmt: v => v.toFixed(1) + ' s' },
+];
+
+// ---------- Music helpers ----------
+const midiOf = (note, octave) => 12 * (octave + 1) + note;
+const hz = midi => 440 * Math.pow(2, (midi - 69) / 12);
+const thirdOffset = () => state.mode === 'major' ? 4 : 3;
+const voiceOffset = name => name === 'root' ? 0 : name === 'third' ? thirdOffset() : VOICES[name].offset;
+
+// ---------- Audio engine ----------
+let ctx, master, ambOut, filter, lfo, lfoGain, dry, wet, analyser, stopTimer;
+// name -> { gain, waves: { [wave]: gainNode }, oscs: [osc...] }
+// Every voice runs one detuned osc pair per waveform; switching Tone crossfades the wave gains.
+// oscs is ordered [-, +] per wave, so even index = negative detune.
+const voiceNodes = {};
+
+function makeImpulse(seconds = 4, decay = 2.5) {
+  const rate = ctx.sampleRate, len = rate * seconds;
+  const buf = ctx.createBuffer(2, len, rate);
+  for (let ch = 0; ch < 2; ch++) {
+    const d = buf.getChannelData(ch);
+    for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, decay);
+  }
+  return buf;
+}
+
+function initAudio() {
+  ctx = new (window.AudioContext || window.webkitAudioContext)();
+
+  master = ctx.createGain();
+  master.gain.value = 0;
+  analyser = ctx.createAnalyser();
+  analyser.fftSize = 2048;
+  master.connect(analyser).connect(ctx.destination);
+  ambOut = ctx.createGain(); // ambience bus: bypasses analyser so the scope shows only the drone
+  ambOut.gain.value = 0;
+  ambOut.connect(ctx.destination);
+
+  filter = ctx.createBiquadFilter();
+  filter.type = 'lowpass';
+  filter.Q.value = 2;
+  filter.frequency.value = state.cutoff;
+
+  lfo = ctx.createOscillator();
+  lfo.frequency.value = state.lfoRate;
+  lfoGain = ctx.createGain();
+  lfoGain.gain.value = state.lfoDepth;
+  lfo.connect(lfoGain).connect(filter.frequency);
+  lfo.start();
+
+  dry = ctx.createGain();
+  wet = ctx.createGain();
+  const verb = ctx.createConvolver();
+  verb.buffer = makeImpulse();
+  filter.connect(dry).connect(master);
+  filter.connect(verb).connect(wet).connect(master);
+
+  const mix = ctx.createGain();
+  mix.gain.value = 0.22; // headroom for summed voices
+  mix.connect(filter);
+
+  for (const name of Object.keys(VOICES)) {
+    const gain = ctx.createGain();
+    gain.gain.value = state.voices[name] ? VOICES[name].level : 0;
+    gain.connect(mix);
+    const waves = {}, oscs = [];
+    for (const w of WAVES) {
+      const wg = ctx.createGain();
+      wg.gain.value = w === state.wave ? 1 : 0;
+      wg.connect(gain);
+      for (const sign of [-1, 1]) {
+        const o = ctx.createOscillator();
+        o.type = w;
+        o.detune.value = sign * state.detune;
+        o.connect(wg);
+        o.start();
+        oscs.push(o);
+      }
+      waves[w] = wg;
+    }
+    voiceNodes[name] = { gain, waves, oscs };
+  }
+
+  applyPitch(true);
+  applyParams(true);
+}
+
+function applyPitch(immediate = false) {
+  if (!ctx) return;
+  const t = ctx.currentTime, base = midiOf(state.note, state.octave);
+  for (const [name, v] of Object.entries(voiceNodes)) {
+    const f = hz(base + voiceOffset(name));
+    for (const o of v.oscs) {
+      o.frequency.cancelScheduledValues(t);
+      if (immediate || state.glide === 0) o.frequency.setValueAtTime(f, t);
+      else {
+        o.frequency.setValueAtTime(o.frequency.value, t);
+        o.frequency.setTargetAtTime(f, t, state.glide / 3);
+      }
+    }
+  }
+}
+
+function applyParams(immediate = false) {
+  if (!ctx) return;
+  const t = ctx.currentTime, tc = immediate ? 0.001 : 0.08;
+  filter.frequency.setTargetAtTime(state.cutoff, t, tc);
+  lfo.frequency.setTargetAtTime(state.lfoRate, t, tc);
+  lfoGain.gain.setTargetAtTime(Math.min(state.lfoDepth, state.cutoff * 0.95), t, tc);
+  dry.gain.setTargetAtTime(1 - state.reverb * 0.7, t, tc);
+  wet.gain.setTargetAtTime(state.reverb * 1.4, t, tc);
+  for (const [name, v] of Object.entries(voiceNodes)) {
+    v.gain.gain.setTargetAtTime(state.voices[name] ? VOICES[name].level : 0, t, 0.3);
+    v.oscs.forEach((o, i) => o.detune.setTargetAtTime((i % 2 ? 1 : -1) * state.detune, t, tc));
+    // Crossfade waveforms; tau = fade/3 so it's ~95% done in waveFade seconds (min tau avoids clicks).
+    const fadeTc = immediate ? 0.001 : Math.max(0.01, state.waveFade / 3);
+    for (const [w, wg] of Object.entries(v.waves)) wg.gain.setTargetAtTime(w === state.wave ? 1 : 0, t, fadeTc);
+  }
+  if (state.playing) for (const g of [master, ambOut]) g.gain.setTargetAtTime(state.volume, t, tc);
+  applyAmbience();
+}
+
+async function setPlaying(on) {
+  if (!ctx) initAudio();
+  state.playing = on;
+  clearTimeout(stopTimer);
+  const t = ctx.currentTime;
+  // master (drone) and ambOut (ambience) are gated together by Play/Stop and Volume.
+  for (const g of [master, ambOut]) {
+    g.gain.cancelScheduledValues(t);
+    g.gain.setValueAtTime(g.gain.value, t);
+  }
+  if (on) {
+    lastStep = performance.now(); scheduleAuto(); // first auto step lands one beat after Play
+    await ctx.resume();
+    for (const g of [master, ambOut]) g.gain.setTargetAtTime(state.volume, ctx.currentTime, 0.5);
+  } else {
+    for (const g of [master, ambOut]) g.gain.setTargetAtTime(0, t, 0.6);
+    stopTimer = setTimeout(() => !state.playing && ctx.suspend(), 4000);
+  }
+  render();
+}
+
+// ---------- Ambience (procedural nature sounds) ----------
+// Everything is synthesized: looped noise/event buffers shaped by filters and slow LFOs.
+// Signal path: sound graph -> per-sound gain (level², 0 when off) -> ambOut -> destination.
+// It bypasses the drone filter/reverb/analyser so the scope stays clean. A sound's graph is built
+// the first time it's enabled and then keeps running (muted when off).
+const ambNodes = {};   // key -> per-sound GainNode
+const ambBufs = {};    // name -> cached AudioBuffer
+
+// Small graph helpers. connect() returns its destination, so chain() wires a series and returns the last node.
+const chain = (...nodes) => nodes.reduce((a, b) => a.connect(b));
+const gainN = v => { const g = ctx.createGain(); g.gain.value = v; return g; };
+const filt = (type, freq, Q = 0.7) => { const f = ctx.createBiquadFilter(); f.type = type; f.frequency.value = freq; f.Q.value = Q; return f; };
+const lfoOsc = rate => { const o = ctx.createOscillator(); o.frequency.value = rate; o.start(); return o; };
+const mod = (osc, depth, param) => osc.connect(gainN(depth)).connect(param); // param += osc * depth
+const loopSrc = buf => {
+  const s = ctx.createBufferSource();
+  s.buffer = buf; s.loop = true;
+  s.start(ctx.currentTime, Math.random() * buf.duration); // random offset so layers don't line up
+  return s;
+};
+
+// Builds a seamless stereo loop: gen(n, rate) returns [L, R] Float32Arrays of length n; the extra
+// tail is equal-power crossfaded into the head so the loop point doesn't click.
+function makeLoop(seconds, gen) {
+  const rate = ctx.sampleRate, len = Math.floor(rate * seconds), F = Math.floor(rate * 0.25);
+  const buf = ctx.createBuffer(2, len, rate);
+  gen(len + F, rate).forEach((raw, ch) => {
+    const d = buf.getChannelData(ch);
+    d.set(raw.subarray(0, len));
+    for (let i = 0; i < F; i++) {
+      const t = (i / F) * Math.PI / 2;
+      d[i] = raw[i] * Math.sin(t) + raw[len + i] * Math.cos(t);
+    }
+  });
+  return buf;
+}
+
+// Adds a decaying sine "ping" (raindrop) or noise "pop" (crackle) into x at sample p.
+function addPing(x, p, freq, decaySamples, amp, rate) {
+  const end = Math.min(x.length, p + decaySamples * 6);
+  for (let k = 0; p + k < end; k++) x[p + k] += amp * Math.sin(2 * Math.PI * freq * k / rate) * Math.exp(-k / decaySamples);
+}
+function addPop(x, p, decaySamples, amp) {
+  const end = Math.min(x.length, p + decaySamples * 6);
+  for (let k = 0; p + k < end; k++) x[p + k] += amp * (Math.random() * 2 - 1) * Math.exp(-k / decaySamples);
+}
+
+// Buffer generators. Lengths are distinct non-multiples so loops don't phase-align audibly.
+const AMB_BUFFERS = {
+  white: () => makeLoop(5, n => [0, 1].map(() => Float32Array.from({ length: n }, () => Math.random() * 2 - 1))),
+  brown: () => makeLoop(7, n => [0, 1].map(() => {
+    const x = new Float32Array(n); let b = 0;
+    for (let i = 0; i < n; i++) { b = (b + 0.02 * (Math.random() * 2 - 1)) / 1.02; x[i] = b * 3.5; }
+    return x;
+  })),
+  drops: () => makeLoop(9, (n, rate) => [0, 1].map(() => {
+    const x = new Float32Array(n), count = (n / rate) * 35;
+    for (let j = 0; j < count; j++) {
+      addPing(x, Math.floor(Math.random() * n), 1800 + Math.random() * 4500,
+        rate * (0.002 + Math.random() * 0.006), 0.15 + Math.random() ** 2 * 0.6, rate);
+    }
+    return x;
+  })),
+  crackle: () => makeLoop(11, (n, rate) => [0, 1].map(() => {
+    const x = new Float32Array(n), count = (n / rate) * 10;
+    for (let j = 0; j < count; j++) {
+      const p = Math.floor(Math.random() * n), burst = Math.random() < 0.2 ? 2 + Math.floor(Math.random() * 5) : 1;
+      for (let k = 0; k < burst; k++) {
+        addPop(x, p + Math.floor(Math.random() * rate * 0.08), rate * (0.0004 + Math.random() * 0.002), 0.2 + Math.random() ** 3 * 0.8);
+      }
+    }
+    return x;
+  })),
+  crickets: () => makeLoop(13, (n, rate) => {
+    const L = new Float32Array(n), R = new Float32Array(n);
+    for (let c = 0; c < 4; c++) {
+      const freq = 4200 + Math.random() * 1200, pan = Math.random() * 2 - 1;
+      const gl = Math.cos((pan + 1) * Math.PI / 4), gr = Math.sin((pan + 1) * Math.PI / 4);
+      const amp = 0.15 + Math.random() * 0.15, period = 0.6 + Math.random() * 0.6;
+      const pulse = Math.floor(rate * 0.014), gap = Math.floor(rate * 0.024);
+      for (let t = Math.random() * period; t * rate < n; t += period * (0.85 + Math.random() * 0.3)) {
+        const pulses = 2 + Math.floor(Math.random() * 3);
+        for (let q = 0; q < pulses; q++) {
+          const p0 = Math.floor(t * rate) + q * gap;
+          for (let k = 0; k < pulse && p0 + k < n; k++) {
+            const v = amp * Math.sin(Math.PI * k / pulse) * Math.sin(2 * Math.PI * freq * k / rate);
+            L[p0 + k] += v * gl; R[p0 + k] += v * gr;
+          }
+        }
+      }
+    }
+    return [L, R];
+  }),
+};
+const ambBuf = name => ambBufs[name] ||= AMB_BUFFERS[name]();
+
+// Sound bank. Each build(out) wires a graph into the per-sound GainNode `out`.
+// To add a sound: add an entry here and a default in state.ambience (the UI is generated).
+const SOUNDS = {
+  rain: { label: 'Rain', icon: 'rainy', build(out) {
+    chain(loopSrc(ambBuf('white')), filt('highpass', 900), filt('lowpass', 7000), gainN(0.3), out); // hiss
+    chain(loopSrc(ambBuf('brown')), filt('lowpass', 350), gainN(0.45), out);                        // body
+    chain(loopSrc(ambBuf('drops')), filt('highpass', 1500), gainN(0.7), out);                       // drops
+  }},
+  wind: { label: 'Wind', icon: 'air', build(out) {
+    const bp = filt('bandpass', 500, 1.2), gust = gainN(1.4);
+    chain(loopSrc(ambBuf('brown')), bp, gust, out);
+    mod(lfoOsc(0.07), 260, bp.frequency); mod(lfoOsc(0.13), 120, bp.frequency);
+    mod(lfoOsc(0.09), 0.9, gust.gain);
+    const whistle = filt('bandpass', 1100, 8);                                                       // thin high moan
+    chain(loopSrc(ambBuf('white')), whistle, gainN(0.08), out);
+    mod(lfoOsc(0.05), 400, whistle.frequency);
+  }},
+  waves: { label: 'Waves', icon: 'waves', build(out) {
+    // Two swell layers at unrelated rates; one LFO per layer drives both loudness and brightness.
+    [0.085, 0.061].forEach(rate => {
+      const o = lfoOsc(rate), lp = filt('lowpass', 900), swell = gainN(0.5), foam = filt('bandpass', 2500, 0.8), foamG = gainN(0.04);
+      chain(loopSrc(ambBuf('brown')), lp, swell, out);
+      chain(loopSrc(ambBuf('white')), foam, foamG, out);
+      mod(o, 650, lp.frequency); mod(o, 0.48, swell.gain); mod(o, 0.04, foamG.gain);
+    });
+  }},
+  stream: { label: 'Stream', icon: 'water', build(out) {
+    const hp = filt('highpass', 300);
+    loopSrc(ambBuf('white')).connect(hp);
+    chain(hp, filt('lowpass', 5000), gainN(0.05), out);                                              // bed
+    [[700, 0.9], [1250, 1.7], [2100, 2.9], [3300, 4.3]].forEach(([f, r]) => {                       // babble
+      const bp = filt('bandpass', f, 7);
+      chain(hp, bp, gainN(0.55), out);
+      mod(lfoOsc(r), f * 0.35, bp.frequency);
+    });
+  }},
+  fire: { label: 'Fire', icon: 'local_fire_department', build(out) {
+    const roar = gainN(0.7);
+    chain(loopSrc(ambBuf('brown')), filt('lowpass', 220), roar, out);
+    mod(lfoOsc(0.3), 0.2, roar.gain);
+    chain(loopSrc(ambBuf('crackle')), filt('highpass', 900), gainN(0.9), out);
+  }},
+  crickets: { label: 'Crickets', icon: 'pest_control', build(out) {
+    chain(loopSrc(ambBuf('crickets')), filt('highpass', 2500), gainN(0.7), out);
+  }},
+};
+
+// Syncs per-sound gains with state.ambience; builds a sound's graph on first enable.
+function applyAmbience() {
+  if (!ctx) return;
+  const t = ctx.currentTime;
+  for (const [key, s] of Object.entries(state.ambience)) {
+    if (!ambNodes[key] && s.on) {
+      const g = ambNodes[key] = gainN(0);
+      g.connect(ambOut);
+      SOUNDS[key].build(g);
+    }
+    // level² gives a more natural fader taper; 0.4 s tau fades sounds in/out gently.
+    ambNodes[key]?.gain.setTargetAtTime(s.on ? s.level * s.level : 0, t, 0.4);
+  }
+}
+
+// ---------- UI ----------
+const $ = s => document.querySelector(s);
+
+function buildUI() {
+  const notesEl = $('#notes');
+  // Black keys (sharps/flats) sit on the boundary after white key #w (0 = C … 6 = B).
+  const BLACK_AFTER_WHITE = { 1: 0, 3: 1, 6: 3, 8: 4, 10: 5 };
+  NOTES.forEach((n, i) => {
+    const b = document.createElement('button');
+    const black = i in BLACK_AFTER_WHITE;
+    b.className = black ? 'pk-black' : 'pk-white';
+    b.textContent = n; b.dataset.note = i; b.setAttribute('aria-label', n);
+    if (black) {
+      // Boundary after white w is at (w+1) * (100% + gap) / 7 - gap/2; center the black key on it.
+      const f = (BLACK_AFTER_WHITE[i] + 1) / 7;
+      b.style.left = `calc((100% + var(--gap)) * ${f} - var(--gap) / 2 - var(--bw) / 2)`;
+    }
+    b.onclick = () => { state.note = i; applyPitch(); render(); };
+    notesEl.appendChild(b);
+  });
+
+  document.querySelectorAll('[data-mode]').forEach(b =>
+    b.onclick = () => { state.mode = b.dataset.mode; applyPitch(); render(); });
+
+  const octEl = $('#octaves');
+  [1, 2, 3, 4].forEach(o => {
+    const b = document.createElement('button');
+    b.className = 'chip'; b.textContent = o; b.dataset.octave = o;
+    b.onclick = () => { state.octave = o; applyPitch(); render(); };
+    octEl.appendChild(b);
+  });
+
+  const waveEl = $('#waves');
+  WAVES.forEach(w => {
+    const b = document.createElement('button');
+    const name = w[0].toUpperCase() + w.slice(1);
+    b.className = 'chip icon'; b.dataset.wave = w; b.title = name; b.setAttribute('aria-label', name);
+    b.innerHTML = `<svg class="wave-svg" viewBox="0 -2 24 18" aria-hidden="true"><path d="${WAVE_PATHS[w]}"/></svg>`;
+    b.onclick = () => { state.wave = w; applyParams(); render(); };
+    waveEl.appendChild(b);
+  });
+
+  document.querySelectorAll('[data-voice]').forEach(b =>
+    b.onclick = () => { const v = b.dataset.voice; state.voices[v] = !state.voices[v]; applyParams(); render(); });
+
+  const slEl = $('#sliders');
+  SLIDERS.forEach(s => {
+    const wrap = document.createElement('div');
+    wrap.className = 'slider';
+    const id = 'sl-' + s.key;
+    wrap.innerHTML = `<label for="${id}"><span class="slider-name"><span class="ms" aria-hidden="true">${s.icon}</span>${s.label}</span><output id="${id}-out"></output></label>
+      <input type="range" id="${id}" min="0" max="1000" step="1">`;
+    slEl.appendChild(wrap);
+    const input = wrap.querySelector('input'), out = wrap.querySelector('output');
+    // Log sliders map 0..1000 exponentially; linear sliders map directly.
+    const toVal = p => {
+      const x = p / 1000;
+      const v = s.log ? s.min * Math.pow(s.max / s.min, x) : s.min + x * (s.max - s.min);
+      return Math.round(v / s.step) * s.step;
+    };
+    const toPos = v => 1000 * (s.log ? Math.log(v / s.min) / Math.log(s.max / s.min) : (v - s.min) / (s.max - s.min));
+    input.value = toPos(state[s.key]);
+    out.textContent = s.fmt(state[s.key]);
+    input.oninput = () => {
+      state[s.key] = toVal(+input.value);
+      out.textContent = s.fmt(state[s.key]);
+      applyParams();
+    };
+  });
+
+  $('#playBtn').onclick = () => setPlaying(!state.playing);
+  $('#randomBtn').onclick = () => {
+    state.note = Math.floor(Math.random() * 12);
+    state.mode = Math.random() < 0.5 ? 'major' : 'minor';
+    applyPitch(); render();
+  };
+
+  // Ambience: one toggle + level slider per SOUNDS entry.
+  const ambEl = $('#ambience');
+  for (const [key, snd] of Object.entries(SOUNDS)) {
+    const s = state.ambience[key];
+    const item = document.createElement('div');
+    item.className = 'amb-item';
+    item.innerHTML = `<button class="chip toggle" data-amb="${key}" aria-pressed="false"><span class="ms" aria-hidden="true">${snd.icon}</span>${snd.label}</button>
+      <input type="range" min="0" max="1" step="0.01" aria-label="${snd.label} level">`;
+    const range = item.querySelector('input');
+    range.value = s.level;
+    item.querySelector('button').onclick = () => { s.on = !s.on; applyAmbience(); render(); };
+    range.oninput = () => { s.level = +range.value; applyAmbience(); };
+    ambEl.appendChild(item);
+  }
+
+  $('#addSlot').onclick = addSlot;
+  $('#removeSlot').onclick = removeSlot;
+
+  // Tempo: slider and number box stay in sync; the box applies on input when valid and clamps on commit.
+  const bpmRange = $('#bpmRange'), bpmInput = $('#bpmInput');
+  bpmRange.min = bpmInput.min = BPM_MIN; bpmRange.max = bpmInput.max = BPM_MAX;
+  bpmRange.value = bpmInput.value = state.bpm;
+  $('#autoBtn').onclick = () => setAuto(!state.auto);
+  bpmRange.oninput = () => { setBpm(+bpmRange.value); bpmInput.value = state.bpm; };
+  bpmInput.oninput = () => {
+    const v = parseFloat(bpmInput.value);
+    if (v >= BPM_MIN && v <= BPM_MAX) { setBpm(v); bpmRange.value = state.bpm; }
+  };
+  bpmInput.onchange = () => { setBpm(parseFloat(bpmInput.value)); bpmInput.value = bpmRange.value = state.bpm; };
+
+  document.addEventListener('keydown', e => {
+    if (e.target.type === 'number') return; // let the BPM box receive typing, Space, arrows, etc.
+    if (e.key === 'Shift') { if (!e.repeat) nextSlot(); return; }
+    if (e.target.tagName === 'INPUT' && e.key.startsWith('Arrow')) return;
+    if (e.code === 'Space') { e.preventDefault(); setPlaying(!state.playing); return; }
+    if (e.key === 'ArrowRight') state.note = (state.note + 1) % 12;
+    else if (e.key === 'ArrowLeft') state.note = (state.note + 11) % 12;
+    else if (e.key === 'ArrowUp') state.octave = Math.min(4, state.octave + 1);
+    else if (e.key === 'ArrowDown') state.octave = Math.max(1, state.octave - 1);
+    else if (e.key.toLowerCase() === 'm') state.mode = state.mode === 'major' ? 'minor' : 'major';
+    else return;
+    e.preventDefault();
+    applyPitch(); render();
+  });
+}
+
+function render() {
+  const root = NOTES[state.note];
+  $('#keyName').innerHTML = `${root}<small>${state.mode}</small>`;
+  $('#rootHz').textContent = hz(midiOf(state.note, state.octave)).toFixed(1) + ' Hz';
+  const tones = [0, thirdOffset(), 7].map(o => NOTES[(state.note + o) % 12]);
+  $('#chordTones').textContent = tones.join(' · ');
+  document.title = `${root} ${state.mode} · Drone Synth`;
+
+  document.querySelectorAll('[data-note]').forEach(b => b.classList.toggle('active', +b.dataset.note === state.note));
+  document.querySelectorAll('[data-mode]').forEach(b => b.classList.toggle('active', b.dataset.mode === state.mode));
+  document.querySelectorAll('[data-octave]').forEach(b => b.classList.toggle('active', +b.dataset.octave === state.octave));
+  document.querySelectorAll('[data-wave]').forEach(b => b.classList.toggle('active', b.dataset.wave === state.wave));
+  document.querySelectorAll('[data-voice]').forEach(b => b.classList.toggle('active', state.voices[b.dataset.voice]));
+  // Slot chips are rebuilt each render since the count changes.
+  $('#slots').replaceChildren(...state.slots.map((saved, i) => {
+    const s = i === state.slot ? state : saved;
+    const b = document.createElement('button');
+    b.className = 'chip' + (i === state.slot ? ' active' : '');
+    b.textContent = `${i + 1} · ${NOTES[s.note]} ${s.mode === 'major' ? 'maj' : 'min'} ${s.octave}`;
+    b.onclick = () => selectSlot(i);
+    return b;
+  }));
+  $('#addSlot').disabled = state.slots.length >= MAX_SLOTS;
+  $('#removeSlot').disabled = state.slots.length <= 1;
+  document.querySelectorAll('[data-amb]').forEach(b => {
+    const on = state.ambience[b.dataset.amb].on;
+    b.classList.toggle('active', on);
+    b.setAttribute('aria-pressed', on);
+  });
+  $('#autoBtn').classList.toggle('active', state.auto);
+  $('#autoBtn').setAttribute('aria-pressed', state.auto);
+
+  const btn = $('#playBtn');
+  btn.querySelector('.ms').textContent = state.playing ? 'stop' : 'play_arrow';
+  btn.setAttribute('aria-label', state.playing ? 'Stop' : 'Play');
+  btn.classList.toggle('on', state.playing);
+  btn.setAttribute('aria-pressed', state.playing);
+}
+
+// ---------- Oscilloscope ----------
+const canvas = $('#scope'), g = canvas.getContext('2d');
+let samples;
+function draw() {
+  const dpr = window.devicePixelRatio || 1;
+  const w = canvas.clientWidth * dpr, h = canvas.clientHeight * dpr;
+  if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
+  g.clearRect(0, 0, w, h);
+  g.lineWidth = 2 * dpr;
+  const grad = g.createLinearGradient(0, 0, w, 0);
+  grad.addColorStop(0, '#7cc4ff'); grad.addColorStop(1, '#b48cff');
+  g.strokeStyle = grad;
+  g.beginPath();
+  if (analyser) {
+    samples = samples || new Float32Array(analyser.fftSize);
+    analyser.getFloatTimeDomainData(samples);
+    // Find a rising zero crossing so the trace stays steady.
+    let start = 0;
+    for (let i = 1; i < samples.length / 2; i++) if (samples[i - 1] < 0 && samples[i] >= 0) { start = i; break; }
+    const n = samples.length / 2;
+    for (let i = 0; i < n; i++) {
+      const x = (i / (n - 1)) * w, y = h / 2 - samples[start + i] * h * 0.9;
+      i ? g.lineTo(x, y) : g.moveTo(x, y);
+    }
+  } else {
+    g.moveTo(0, h / 2); g.lineTo(w, h / 2);
+  }
+  g.stroke();
+  requestAnimationFrame(draw);
+}
+
+buildUI();
+render();
+draw();
+</script>
+</body>
+</html>
