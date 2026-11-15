@@ -15,7 +15,7 @@ To check a change, load the page, press Play, and exercise the control you touch
 | Lines (approx) | Section | Notes |
 |---|---|---|
 | `<style>` | Theme + layout | Colors are CSS vars on `:root`; see **Color system**. Dark-only. Breakpoint at 560px shortens the piano and the Play button. Key picker is a one-octave piano (`.piano`): white keys are flex items, and black keys are absolutely positioned. Each black key's `left` is computed in `buildUI()` from `BLACK_AFTER_WHITE` and the `--gap`/`--bw` CSS vars. Black keys are out of flex flow, so DOM and tab order stay chromatic (C, C♯, D…). |
-| `<main>` markup | Static shell | `.titlebar` (h1), `.display` (key name, Hz, chord, Play button, `.scope-wrap > <canvas id="scope">`), then `<section>`s: **Key** (`.p-key`), **Sequencer** (`.p-slots`, rows wrapped in `.slots-bar`; the UI says "Sequencer"/"steps", while code and docs still say slots), **Tone** (`.p-tone`), **Shape** (`.p-shape`), **Ambience** (`.p-amb`), then the shortcut `.hint`. DOM order is the stacked/mobile order, and the app grid places panels by `grid-area`. Containers `#notes`, `#octaves`, `#slots`, `#waves`, `#sliders`, `#ambience` are filled by JS. Mode and voice chips are hard-coded in HTML. |
+| `<main>` markup | Static shell | `.titlebar` (h1), `.display` (key name, Hz, chord, Play button, `.scope-wrap > <canvas id="scope">`), then `<section>`s: **Key** (`.p-key`), **Sequencer** (`.p-slots`, rows wrapped in `.slots-bar`; the UI says "Sequencer"/"steps", while code and docs still say slots), **Tone** (`.p-tone`), **Shape** (`.p-shape`), **Ambience** (`.p-amb`), then the shortcut `.hint`. Key + Tone are wrapped in `.col-left`, Shape + Ambience in `.col-right`, and Sequencer comes after them. DOM order is the stacked/mobile order, and the app grid places panels by `grid-area`. Containers `#notes`, `#octaves`, `#slots`, `#waves`, `#sliders`, `#ambience` are filled by JS. Mode and voice chips are hard-coded in HTML. |
 | `NOTES`, `WAVES`, `VOICES`, `state`, `SLIDERS` | Config + state | The single source of truth. Most features start here. |
 | Music helpers | `midiOf`, `hz`, `thirdOffset`, `voiceOffset` | MIDI math; A4 = 440 Hz; octave numbering is scientific (C4 = MIDI 60). |
 | Audio engine | `initAudio`, `applyPitch`, `applyParams`, `setPlaying`, `makeImpulse` | Graph is built once, lazily, on first play. |
@@ -34,7 +34,7 @@ Each panel is identified by its own hue, and nesting depth is shown by lightness
   |---|---|---|
   | Key | `--hue-key` | blue |
   | Tone | `--hue-tone` | violet |
-  | Shape › Sound / Filter / Transitions | `--hue-sound` / `--hue-filter` / `--hue-motion` | orange / teal / pink |
+  | Shape › Filter / FX | `--hue-filter` / `--hue-fx` | teal / pink |
   | Ambience | `--hue-amb` | green |
   | Sequencer (`.p-slots`) | `--hue-slots` | yellow |
   | Display, Shape frame | default `--hue` | neutral grey (the Shape groups carry the color) |
@@ -53,25 +53,28 @@ Each panel is identified by its own hue, and nesting depth is shown by lightness
 At `min-width: 900px` and `min-height: 600px`, `<main>` becomes a full-viewport CSS grid and `body` is `overflow: hidden`:
 
 ```
-"bar   display display"   title | compact transport strip (key name · mini scope · play)
-"key   key     tone"      auto row: piano (height clamp(90px, 16vh, 180px)) + mode/octave beside it.
-                          Key's mode/octave rows and Tone's wave/voice rows stretch to fill their panel:
-                          rows share the height, and buttons are `flex: 1 1 0`.
-"shape shape   amb"       1fr row, the mixer: vertical faders stretch to fill it
-"slots slots   slots"     one slim line: heading, slot chain, tempo pinned right
-"hint  hint    hint"      status bar with keyboard shortcuts
+"bar   display"   title | compact transport strip (key name · chord HUD · mini scope · volume · play).
+                  Below 1400px wide the display spans the whole top row and the title is hidden.
+"left  right"     1fr row. Left (.col-left): Key (piano, then mode/octave rows) over Tone (button rows plus the Fade strip on its right).
+                  Right (.col-right): Filter | FX on top, Ambience full width below.
+"slots slots"     Sequencer: one slim line with heading, step chain, tempo pinned right
+"hint  hint"      status bar with keyboard shortcuts
 ```
 
-- The display is deliberately small, since it's the least important panel. Its key name, scope and play button sit in one row, with CSS `order` placing the scope between the text and the button.
+- **Left column:** Key flexes, and its piano absorbs spare height (max 260px). Tone sizes to its content. In both panels the button rows are `flex: 1 1 0`, so the buttons split the width evenly.
+- **Right column:** `.col-right` is a 6-track grid. `.p-shape` and `.sliders` are `display: contents`, so the Shape group fieldsets become grid items beside `.p-amb`. Each group is placed by `[data-group]`, which `buildUI()` sets: the top row is Filter (3 tracks) and FX (3), and Ambience spans the full bottom row. There's one track per top-row strip, so those strips are even. Two-word names wrap in the top row, so every Shape label reserves two lines and the faders stay equal length. In this layout the group fieldsets are styled as full panels (floated legend plus hue dot), and the "Shape" heading is hidden.
+- **Changing strip counts:** if you add a slider or sound, re-balance the `grid-column` spans in the app-layout CSS.
+
+- The display is deliberately small, since it's the least important panel. Its key name, chord HUD, scope, master volume (`.master`) and play button sit in one row, ordered with CSS `order`. In the stacked layout the order is key + play, volume, chord, scope.
 - Below that size, the media query doesn't apply and the page falls back to the stacked, scrolling layout (phones). There the faders have a fixed 150px height and the groups wrap.
 - Sections get `min-height: 0; overflow: auto`, so if a panel's content outgrows its cell it scrolls internally instead of the page.
 - The canvas is absolutely positioned inside `.scope-wrap`. `draw()` sets its pixel size from `clientHeight`, and without the wrapper that would feed back into grid sizing.
-- Adding controls: check that 1024×640 still fits. There, a strip is about 46px wide (Ambience) to 60px (Shape), and the faders are about 110px tall. Each new slider or sound narrows every strip in its panel. Anything added to the Key/Tone or Sequencer rows takes height away from the faders.
+- Adding controls: check that 1024×640 still fits. There, strips are about 70px (bottom row) to 115px (top row) wide, and the faders are only about 75px tall (about 140px at 1440×810). Anything added to the display bar, a fader panel's header, or the Sequencer takes height away from the faders. Anything added to Tone takes height from the piano.
 
 ### Faders and range sliders
 All `input[type=range]` are custom-drawn. The filled part of the track (WebKit) comes from a CSS var `--p` (0..1), which `fillRange(el)` sets. A document-level `input` listener covers user drags, but **code that sets a range's `.value` must call `fillRange(el)` itself**. Firefox uses `::-moz-range-progress` and needs no JS.
 - **Vertical faders** (Shape and Ambience): a range inside `.fader` is rotated with `writing-mode: vertical-lr; direction: rtl`, so max is at the top. Its cap is a 30×16 rectangle (`--cap`). The tick scale is `.fader::before` (minor ticks every 10%) and `::after` (major ticks at 0/50/100%), inset by `--cap / 2` so the ticks line up with the cap's centre line.
-- **Channel strips:** strips read top to bottom. A Shape strip is `label` (icon + name) / `output` / `.fader`. An Ambience strip is toggle chip (icon + name) / `output` (level %) / `.fader`. Strip text is large and scales with `vw` via `clamp()`: names run 13–18px, values 13–16px, and icons use `--strip-icon` (26–38px). Two-word names wrap to two lines on narrow screens. Below 1200px every Shape label reserves two lines of height so the faders stay equal length. Keep new names short; one word is best for Ambience.
+- **Channel strips:** strips read top to bottom. A Shape strip is `label` (icon + name) / `output` / `.fader`. An Ambience strip is toggle chip (icon + name) / `output` (level %) / `.fader`. Strip text is large and scales with `vw` via `clamp()`: names run 13–18px, values 13–16px, and icons use `--strip-icon` (26–38px). Two-word names wrap to two lines on narrow screens. Every Shape label reserves two lines of height so the faders stay equal length. This applies in the app layout and in the stacked layout below 1200px. Keep new names short; one word is best for Ambience.
 - **Horizontal** (only BPM now): a 28px hit area, a 6px track and a 20px round thumb.
 
 ## State model
@@ -158,7 +161,7 @@ The toggle and level slider are generated by `buildUI()`. Internal gains are set
 
 ### Add a slider parameter
 1. Add a default to `state` (e.g. `resonance: 2`).
-2. Add an entry to `SLIDERS`: `{ key, group, label, icon, min, max, step, fmt, log? }`. `group` is a `SLIDER_GROUPS` key: `sound` (Volume, Detune, Reverb), `filter` (Cutoff, LFO rate, LFO depth) or `motion` (Glide, Tone fade, shown as "Transitions"). Each group also has a `hue` (a `--hue-*` token). Each group renders as a `<fieldset class="slider-group">` of fader strips. Groups sit side by side, and each one's flex share is its slider count (`--n`), so all strips are the same width. Order within a group follows `SLIDERS` order. Add `icon` to the font `<link>`'s `icon_names` too (see **Icons**).
+2. Add an entry to `SLIDERS`: `{ key, group, label, icon, min, max, step, fmt, log? }`. `group` is a `SLIDER_GROUPS` key: `filter` (Cutoff, LFO rate, LFO depth), or `fx` (Glide, Detune, Reverb, shown as "FX"), in that display order. Use `group: 'tone'` for a fader strip on the right edge of the Tone panel (`#toneSliders`, one-line label). Only Tone fade uses this, labelled "Fade" with `title: 'Tone fade'`. The optional `title` overrides the tooltip and aria name when the visible label is shortened. Use `group: 'master'` for a compact horizontal slider in the display bar's `#master` slot instead of a fader strip (only Volume uses this, next to Play). Each group also has a `hue` (a `--hue-*` token). Each group renders as a `<fieldset class="slider-group">` of fader strips. In the stacked (phone) layout, groups sit side by side with a flex share equal to their slider count (`--n`). In the app layout they're placed in the right-column grid instead (see **App layout**). Order within a group follows `SLIDERS` order. Add `icon` to the font `<link>`'s `icon_names` too (see **Icons**).
    - The `<input>` always runs 0–1000 internally. `toVal` and `toPos` map that range to the real value.
    - Set `log: true` for frequency- or time-like ranges. `min` must be > 0 when `log` is set.
 3. Use `state.<key>` inside `applyParams()`, and smooth it with `setTargetAtTime(…, t, tc)`.

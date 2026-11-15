@@ -27,9 +27,8 @@
     --hue: #c7cdd8;            /* neutral default */
     --hue-key: #5fb3ff;
     --hue-tone: #b48cff;
-    --hue-sound: #ffa04d;
     --hue-filter: #2dd4bf;
-    --hue-motion: #ff7eb6;
+    --hue-fx: #ff7eb6;
     --hue-amb: #6ee7a0;
     --hue-slots: #ffd23f;
   }
@@ -42,6 +41,14 @@
   }
   .p-key { --hue: var(--hue-key); }
   .p-tone { --hue: var(--hue-tone); }
+  /* Tone: heading + button rows on the left, the Fade fader strip on the right spanning the panel's height. */
+  .p-tone { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 14px; }
+  .p-tone > h2, .p-tone > .row { grid-column: 1; }
+  .tone-side { grid-column: 2; grid-row: 1 / span 3; display: flex; }
+  .tone-side .fader { height: auto; min-height: 60px; }
+  .tone-side .slider { flex: 0 0 76px; }
+  .tone-side .slider label { min-height: 0; flex-direction: row; gap: 4px; }  /* one line: icon + short name */
+  .tone-side .slider label .ms { font-size: 22px; }
   .p-amb { --hue: var(--hue-amb); }
   .p-slots { --hue: var(--hue-slots); }
   body {
@@ -65,10 +72,16 @@
   }
   .key { font-size: clamp(44px, 10vw, 72px); font-weight: 700; line-height: 1; letter-spacing: -.02em; }
   .key small { font-size: .45em; font-weight: 500; color: var(--hue-key); margin-left: .25em; }
-  .meta { color: var(--muted); font-variant-numeric: tabular-nums; margin-top: 8px; }
+  .meta { color: var(--muted); font-variant-numeric: tabular-nums; margin-top: 8px; white-space: nowrap; }
   .meta b { color: var(--text); font-weight: 600; white-space: nowrap; }
+  /* Master volume: compact horizontal slider in the display bar, colored like the Play button. */
+  .master { grid-column: 1 / -1; order: 1; --hue: var(--accent); }  /* stacked layout: key + play, then volume, chord, scope */
+  .master-slider { display: flex; align-items: center; gap: 8px; }
+  .master-slider label { color: var(--accent); cursor: pointer; }
+  .master-slider input[type=range] { flex: 1; min-width: 80px; --thumb: 16px; }
+  .master-slider output { min-width: 3.2em; text-align: right; font-size: 13px; font-weight: 600; font-variant-numeric: tabular-nums; color: var(--text); }
   /* Chord HUD: big note tiles with interval labels, a glanceable cheat sheet for playing along. Root tile in the Key hue. */
-  .chord { grid-column: 1 / -1; display: flex; align-items: center; gap: 12px; }
+  .chord { grid-column: 1 / -1; order: 2; display: flex; align-items: center; gap: 12px; }
   .chord-label { font-size: 11px; font-weight: 700; letter-spacing: .15em; text-transform: uppercase; color: var(--muted); }
   .chord-tones { display: flex; gap: 8px; }
   .tone {
@@ -80,7 +93,7 @@
   .tone.root { border-color: var(--hue-key); background: color-mix(in srgb, var(--hue-key) 18%, var(--control)); }
   .tone.root b, .tone.root small { color: var(--hue-key); }
   /* Canvas is absolutely positioned in its wrapper so its JS-set pixel size can't feed back into layout. */
-  .scope-wrap { grid-column: 1 / -1; position: relative; height: 110px; }
+  .scope-wrap { grid-column: 1 / -1; order: 3; position: relative; height: 110px; }
   canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; border-radius: 8px; background: #0a0c10; }
 
   .play {
@@ -180,7 +193,7 @@
   .slider output, .amb-item output { font-size: clamp(13px, 1.1vw, 16px); font-weight: 600; color: var(--text); font-variant-numeric: tabular-nums; white-space: nowrap; }
   .slider label {
     display: flex; flex-direction: column; align-items: center; gap: 3px; max-width: 100%;
-    font-size: clamp(13px, 1.25vw, 18px); font-weight: 600; line-height: 1.15; text-align: center; color: color-mix(in srgb, var(--hue) 30%, #b4bccb); cursor: pointer;
+    font-size: clamp(11px, 1.25vw, 18px); font-weight: 600; line-height: 1.15; text-align: center; color: color-mix(in srgb, var(--hue) 30%, #b4bccb); cursor: pointer;
   }
   :root { --strip-icon: clamp(26px, 2.6vw, 38px); }
   .slider label .ms, .amb-item button.chip .ms { font-size: var(--strip-icon); }
@@ -191,6 +204,7 @@
   /* Below ~1200px some names wrap to two lines; reserve that height on every Shape label so all faders stay equal length. */
   @media (max-width: 1199px) { .slider label { min-height: calc(var(--strip-icon) + 3px + 2.3em); justify-content: flex-start; } }
   .strip-name { max-width: 100%; overflow: hidden; text-overflow: ellipsis; overflow-wrap: anywhere; }
+  .amb-item .strip-name { white-space: nowrap; overflow-wrap: normal; } /* one-word names: never break mid-word */
 
   /* Vertical fader: native range rotated with writing-mode (max at top), drawn over a tick scale.
      Ticks are inset by half the cap height so they line up with where the cap's centre line can travel.
@@ -266,7 +280,7 @@
 
   /* Ambience: channel strips — level / fader / toggle (icon + name, like a channel's mute button). */
   .amb { display: flex; gap: 8px; }
-  .amb-item button.chip { align-self: stretch; padding: 6px 0; display: flex; flex-direction: column; align-items: center; gap: 3px; font-size: clamp(12px, 1.05vw, 15px); line-height: 1.15; letter-spacing: -.01em; }
+  .amb-item button.chip { align-self: stretch; padding: 6px 0; display: flex; flex-direction: column; align-items: center; gap: 3px; font-size: clamp(10px, 1.05vw, 15px); line-height: 1.15; letter-spacing: -.01em; }
 
   /* Icons: Material Symbols ligatures (<span class="ms">name</span>) + inline SVG wave glyphs. */
   .ms {
@@ -293,29 +307,29 @@
   }
 
   /* App layout: when the viewport is big enough, every panel fits on screen and the page never scrolls.
-     Compact display bar on top, Key + Tone, then the mixer row (Shape + Ambience faders absorb
-     spare height), a slim full-width Slots chain, and a one-line status bar with the shortcuts. */
+     Title | compact display bar on top; left column = Key (piano, then mode/octave) + Tone;
+     right column = 2×2 of Filter | Transitions over Sound | Ambience (faders absorb spare height);
+     slim full-width Sequencer; one-line status bar with the shortcuts. */
   @media (min-width: 900px) and (min-height: 600px) {
     html, body { height: 100%; overflow: hidden; }
     main {
       max-width: none; height: 100vh; height: 100dvh; padding: 12px 16px 8px;
       display: grid; gap: 12px;
-      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(360px, 1fr);
-      grid-template-rows: auto auto minmax(0, 1fr) auto auto;
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); /* left (Key + Tone) and right (faders) split 50 / 50 */
+      grid-template-rows: auto minmax(0, 1fr) auto auto;
       grid-template-areas:
-        "bar   display display"
-        "key   key     tone"
-        "shape shape   amb"
-        "slots slots   slots"
-        "hint  hint    hint";
+        "bar   display"
+        "left  right"
+        "slots slots"
+        "hint  hint";
     }
     .titlebar { grid-area: bar; align-self: center; }
     .titlebar h1 { margin: 0; }
     .hint { grid-area: hint; margin: 0; text-align: right; }
     section { margin: 0; padding: 14px 16px; min-height: 0; overflow: auto; }
 
-    /* Display shrinks to a single transport strip: key name | mini scope | play. */
-    .display { grid-area: display; grid-template-columns: auto auto minmax(0, 1fr) auto; padding: 8px 10px 8px 16px; gap: 16px; }
+    /* Display shrinks to a single transport strip: key name | chord HUD | mini scope | play. */
+    .display { grid-area: display; grid-template-columns: auto auto minmax(0, 1fr) auto auto; padding: 8px 10px 8px 16px; gap: 16px; }
     .chord { grid-column: auto; order: 1; gap: 10px; }
     .chord-label { writing-mode: vertical-rl; transform: rotate(180deg); font-size: 10px; }
     .chord-tones { gap: 6px; }
@@ -325,35 +339,69 @@
     .key { font-size: 32px; }
     .meta { font-size: 12px; margin-top: 2px; }
     .scope-wrap { grid-column: auto; order: 2; height: 48px; }
-    .play { order: 3; width: 48px; height: 48px; }
+    .master { grid-column: auto; order: 3; }
+    .master-slider input[type=range] { width: clamp(70px, 8vw, 130px); min-width: 0; flex: none; }
+    .play { order: 4; width: 48px; height: 48px; }
     .play .ms { font-size: 28px; }
 
-    /* Key: piano on the left, mode and octave rows stacked to its right. */
-    /* Key: piano on the left; mode and octave rows to its right share the piano's height and split their width evenly (like Tone). */
-    .p-key { grid-area: key; display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(240px, 1fr); grid-template-rows: auto 1fr 1fr; gap: 10px 20px; }
-    .p-key h2 { grid-column: 1 / -1; margin: 0; }
-    .p-key .piano { grid-row: 2 / span 2; height: clamp(90px, 16vh, 180px); }
-    .p-key .row { grid-column: 2; margin: 0; gap: 8px; flex-wrap: nowrap; align-items: stretch; }
-    .p-key .row .label { align-self: center; }
+    /* Left column: Key grows (its piano takes the spare height), Tone sizes to content. */
+    .col-left { grid-area: left; display: flex; flex-direction: column; gap: 12px; min-height: 0; }
+    .p-key { flex: 1 1 auto; display: flex; flex-direction: column; gap: 10px; }
+    .p-key h2 { margin: 0; }
+    /* Piano and the two button rows share the panel's full height (3 : 1 : 1); rows cap at 96px so extra height goes to the piano. */
+    .p-key .piano { flex: 3 1 0; height: auto; min-height: 80px; }
+    .p-key .row { flex: 1 1 0; max-height: 96px; }
+    /* Tone: heading + two button rows on the left, the Fade fader strip spanning the full height on the right. */
+    .p-tone { flex: 0 0 auto; grid-template-rows: auto 1fr 1fr; gap: 10px 14px; }
+    .p-tone h2 { margin: 0; }
+    /* Key's mode/octave rows and Tone's rows: buttons split the width evenly. */
+    .p-key .row, .p-tone .row { margin: 0; gap: 8px; flex-wrap: nowrap; align-items: stretch; }
+    .p-key .row .label, .p-tone .row .label { align-self: center; }
     .p-key .row .spacer { display: none; }
-    .p-key .row button.chip { flex: 1 1 0; min-width: 0; min-height: 40px; padding: 4px; font-size: clamp(14px, 1.2vw, 18px); }
+    .p-key .row button.chip, .p-tone .row button.chip {
+      flex: 1 1 0; min-width: 0; min-height: clamp(40px, 6vh, 56px); padding: 4px; font-size: clamp(14px, 1.2vw, 18px); white-space: nowrap;
+    }
     .p-key #randomBtn { flex-grow: .6; }
     .p-key #randomBtn .ms { font-size: clamp(20px, 1.8vw, 26px); }
-    /* Tone: both rows share the panel height, and the buttons split each row's width evenly. */
-    .p-tone { grid-area: tone; display: flex; flex-direction: column; gap: 10px; }
-    .p-tone h2 { margin: 0; }
-    .p-tone .row { flex: 1; margin: 0; gap: 8px; flex-wrap: nowrap; align-items: stretch; }
-    .p-tone .row .label { align-self: center; }
-    .p-tone .row button.chip { flex: 1 1 0; min-width: 0; min-height: 40px; padding: 4px; font-size: clamp(14px, 1.2vw, 18px); white-space: nowrap; }
     .p-tone .wave-svg { width: clamp(30px, 2.8vw, 46px); height: auto; aspect-ratio: 24 / 18; stroke-width: 1.75; }
 
-    /* Mixer row: faders stretch to fill the row's height. */
-    .p-shape, .p-amb { display: flex; flex-direction: column; }
-    .p-shape { grid-area: shape; }
-    .p-amb { grid-area: amb; }
-    .sliders { flex: 1; flex-wrap: nowrap; min-height: 0; }
+    /* Right column: Filter | FX on top, Ambience full width below. The Shape wrapper is unwrapped (display: contents)
+       so its groups sit in the grid beside Ambience. 6 tracks = the top row's strip count (Filter 3 + FX 3), so
+       strips are even across the top row. */
+    .col-right {
+      grid-area: right; min-height: 0;
+      display: grid; gap: 12px; grid-template-columns: repeat(6, minmax(0, 1fr)); grid-template-rows: minmax(0, 1fr) minmax(0, 1fr);
+    }
+    .p-shape, .p-shape .sliders { display: contents; }
+    .p-shape > h2 { display: none; }
+    .slider-group[data-group=filter] { grid-column: 1 / span 3; grid-row: 1; }
+    .slider-group[data-group=fx]     { grid-column: 4 / span 3; grid-row: 1; }
+    .p-amb { grid-column: 1 / -1; grid-row: 2; display: flex; flex-direction: column; }
+    /* Groups become full panels here, matching Ambience: floated legend reads like a panel h2, with the hue dot. */
+    .slider-group { min-width: 0; min-height: 0; padding: 12px 14px; border-radius: 14px; }
+    .slider-group legend {
+      float: left; width: 100%; padding: 0; margin: 0 0 10px;
+      font-size: 12px; letter-spacing: .15em;
+    }
+    .slider-group legend::before {
+      content: ""; display: inline-block; width: 8px; height: 8px; margin-right: 8px; vertical-align: 1px;
+      border-radius: 50%; background: var(--hue); box-shadow: 0 0 6px var(--hue-ring);
+    }
+    .p-amb { padding: 12px 14px; }
+    .p-amb h2 { margin-bottom: 10px; }
+    .group-sliders { min-height: 0; }
     .amb { flex: 1; min-height: 0; }
     .fader { flex: 1; height: auto; }
+    /* Two-word names (LFO depth) can wrap in the top row; reserve two lines on every label
+       so all faders stay equal length. */
+    .slider label { min-height: calc(var(--strip-icon) + 3px + 2.3em); justify-content: flex-start; }
+
+    /* Below 1400px the right half is too narrow for key · chord · scope · volume · play, so the display bar
+       takes the whole top row and the title text is dropped (it's still in the tab title). */
+    @media (max-width: 1399px) {
+      main { grid-template-areas: "display display" "left right" "slots slots" "hint hint"; }
+      .titlebar { display: none; }
+    }
 
     /* Slots: one slim line for the chain, tempo controls pinned right. */
     .p-slots { grid-area: slots; display: flex; align-items: center; gap: 8px 20px; padding: 10px 16px; }
@@ -378,26 +426,57 @@
       <div class="key" id="keyName">A<small>minor</small></div>
       <div class="meta">Root <b id="rootHz">110.0 Hz</b></div>
     </div>
+    <div class="master" id="master"></div>
     <button class="play" id="playBtn" aria-pressed="false" aria-label="Play"><span class="ms" aria-hidden="true">play_arrow</span></button>
     <div class="chord" role="group" aria-label="Chord tones"><span class="chord-label">Chord</span><div class="chord-tones" id="chordTones"></div></div>
     <div class="scope-wrap"><canvas id="scope"></canvas></div>
   </div>
 
-  <section class="p-key">
-    <h2>Key</h2>
-    <div class="piano" id="notes"></div>
-    <div class="row">
-      <span class="label ms" role="img" aria-label="Mode" title="Mode">contrast</span>
-      <button class="chip" data-mode="major">Major</button>
-      <button class="chip" data-mode="minor">Minor</button>
-      <span class="spacer" style="flex:1"></span>
-      <button class="chip icon" id="randomBtn" title="Random key" aria-label="Random key"><span class="ms" aria-hidden="true">shuffle</span></button>
-    </div>
-    <div class="row">
-      <span class="label ms" role="img" aria-label="Octave" title="Octave">swap_vert</span>
-      <span id="octaves" style="display:contents"></span>
-    </div>
-  </section>
+  <div class="col-left">
+    <section class="p-key">
+      <h2>Key</h2>
+      <div class="piano" id="notes"></div>
+      <div class="row">
+        <span class="label ms" role="img" aria-label="Mode" title="Mode">contrast</span>
+        <button class="chip" data-mode="major">Major</button>
+        <button class="chip" data-mode="minor">Minor</button>
+        <span class="spacer" style="flex:1"></span>
+        <button class="chip icon" id="randomBtn" title="Random key" aria-label="Random key"><span class="ms" aria-hidden="true">shuffle</span></button>
+      </div>
+      <div class="row">
+        <span class="label ms" role="img" aria-label="Octave" title="Octave">swap_vert</span>
+        <span id="octaves" style="display:contents"></span>
+      </div>
+    </section>
+
+    <section class="p-tone">
+      <h2>Tone</h2>
+      <div class="row" style="margin-top:0">
+        <span class="label ms" role="img" aria-label="Wave" title="Wave">airwave</span>
+        <span id="waves" style="display:contents"></span>
+      </div>
+      <div class="row">
+        <span class="label ms" role="img" aria-label="Voices" title="Voices">layers</span>
+        <button class="chip toggle" data-voice="sub">Sub</button>
+        <button class="chip toggle" data-voice="third">3rd</button>
+        <button class="chip toggle" data-voice="fifth">5th</button>
+        <button class="chip toggle" data-voice="up">Octave ↑</button>
+      </div>
+      <div class="tone-side" id="toneSliders"></div>
+    </section>
+  </div>
+
+  <div class="col-right">
+    <section class="p-shape">
+      <h2>Shape</h2>
+      <div class="sliders" id="sliders"></div>
+    </section>
+
+    <section class="p-amb">
+      <h2>Ambience</h2>
+      <div class="amb" id="ambience"></div>
+    </section>
+  </div>
 
   <section class="p-slots">
     <h2>Sequencer</h2>
@@ -417,31 +496,6 @@
       <span class="label">BPM</span>
     </div>
     </div>
-  </section>
-
-  <section class="p-tone">
-    <h2>Tone</h2>
-    <div class="row" style="margin-top:0">
-      <span class="label ms" role="img" aria-label="Wave" title="Wave">airwave</span>
-      <span id="waves" style="display:contents"></span>
-    </div>
-    <div class="row">
-      <span class="label ms" role="img" aria-label="Voices" title="Voices">layers</span>
-      <button class="chip toggle" data-voice="sub">Sub</button>
-      <button class="chip toggle" data-voice="third">3rd</button>
-      <button class="chip toggle" data-voice="fifth">5th</button>
-      <button class="chip toggle" data-voice="up">Octave ↑</button>
-    </div>
-  </section>
-
-  <section class="p-shape">
-    <h2>Shape</h2>
-    <div class="sliders" id="sliders"></div>
-  </section>
-
-  <section class="p-amb">
-    <h2>Ambience</h2>
-    <div class="amb" id="ambience"></div>
   </section>
 
   <p class="hint"><kbd>Space</kbd> play/stop · <kbd>←</kbd><kbd>→</kbd> change key · <kbd>↑</kbd><kbd>↓</kbd> octave · <kbd>M</kbd> major/minor · <kbd>Shift</kbd> next step</p>
@@ -544,20 +598,21 @@ function setBpm(v) {
 
 // Shape panel groups, in display order (left to right). hue: the group's --hue (headings, borders, fader fills).
 const SLIDER_GROUPS = [
-  { key: 'sound',  label: 'Sound',       hue: 'var(--hue-sound)' },
-  { key: 'filter', label: 'Filter',      hue: 'var(--hue-filter)' },
-  { key: 'motion', label: 'Transitions', hue: 'var(--hue-motion)' },
+  { key: 'filter', label: 'Filter', hue: 'var(--hue-filter)' },
+  { key: 'fx',     label: 'FX',     hue: 'var(--hue-fx)' },
 ];
 const SLIDERS = [
-  // icon = Material Symbols name (must also be listed in the <link> icon_names); group = SLIDER_GROUPS key.
-  { key: 'volume',   group: 'sound',  label: 'Volume',    icon: 'volume_up',      min: 0,    max: 1,    step: 0.01, fmt: v => Math.round(v * 100) + '%' },
-  { key: 'detune',   group: 'sound',  label: 'Detune',    icon: 'compare_arrows', min: 0,    max: 30,   step: 0.5,  fmt: v => v + ' ¢' },
-  { key: 'reverb',   group: 'sound',  label: 'Reverb',    icon: 'spatial_audio',  min: 0,    max: 1,    step: 0.01, fmt: v => Math.round(v * 100) + '%' },
+  // icon = Material Symbols name (must also be listed in the <link> icon_names); group = SLIDER_GROUPS key,
+  // or 'master' for the compact horizontal slider in the display bar (#master),
+  // or 'tone' for a fader strip on the right edge of the Tone panel (#toneSliders). title: tooltip if it differs from label.
+  { key: 'volume',   group: 'master', label: 'Volume',    icon: 'volume_up',      min: 0,    max: 1,    step: 0.01, fmt: v => Math.round(v * 100) + '%' },
   { key: 'cutoff',   group: 'filter', label: 'Cutoff',    icon: 'filter_alt',     min: 80,   max: 8000, step: 1,    fmt: v => Math.round(v) + ' Hz', log: true },
-  { key: 'lfoRate',  group: 'filter', label: 'LFO rate',  icon: 'speed',          min: 0.01, max: 2,    step: 0.01, fmt: v => v.toFixed(2) + ' Hz', log: true },
+  { key: 'lfoRate',  group: 'filter', label: 'LFO rate',  icon: 'speed',          min: 0.01, max: 20,   step: 0.01, fmt: v => v.toFixed(v < 1 ? 2 : v < 10 ? 1 : 0) + ' Hz', log: true },
   { key: 'lfoDepth', group: 'filter', label: 'LFO depth', icon: 'height',         min: 0,    max: 2000, step: 1,    fmt: v => Math.round(v) + ' Hz' },
-  { key: 'glide',    group: 'motion', label: 'Glide',     icon: 'trending_up',    min: 0,    max: 6,    step: 0.1,  fmt: v => v.toFixed(1) + ' s' },
-  { key: 'waveFade', group: 'motion', label: 'Tone fade', icon: 'gradient',       min: 0,    max: 6,    step: 0.1,  fmt: v => v.toFixed(1) + ' s' },
+  { key: 'glide',    group: 'fx',     label: 'Glide',     icon: 'trending_up',    min: 0,    max: 6,    step: 0.1,  fmt: v => v.toFixed(1) + ' s' },
+  { key: 'waveFade', group: 'tone',   label: 'Fade', title: 'Tone fade', icon: 'gradient',       min: 0,    max: 6,    step: 0.1,  fmt: v => v.toFixed(1) + ' s' },
+  { key: 'detune',   group: 'fx',     label: 'Detune',    icon: 'compare_arrows', min: 0,    max: 30,   step: 0.5,  fmt: v => v + ' ¢' },
+  { key: 'reverb',   group: 'fx',     label: 'Reverb',    icon: 'spatial_audio',  min: 0,    max: 1,    step: 0.01, fmt: v => Math.round(v * 100) + '%' },
 ];
 
 // ---------- Music helpers ----------
@@ -899,6 +954,7 @@ function buildUI() {
   SLIDER_GROUPS.forEach(g => {
     const fs = document.createElement('fieldset');
     fs.className = 'slider-group';
+    fs.dataset.group = g.key; // app layout places each group in the right-column grid by this
     fs.style.setProperty('--n', SLIDERS.filter(s => s.group === g.key).length);
     fs.style.setProperty('--hue', g.hue);
     fs.innerHTML = `<legend>${g.label}</legend><div class="group-sliders"></div>`;
@@ -907,12 +963,21 @@ function buildUI() {
   });
   SLIDERS.forEach(s => {
     const wrap = document.createElement('div');
-    wrap.className = 'slider';
     const id = 'sl-' + s.key;
-    wrap.innerHTML = `<label for="${id}" title="${s.label}"><span class="ms" aria-hidden="true">${s.icon}</span><span class="strip-name">${s.label}</span></label>
-      <output id="${id}-out" for="${id}"></output>
-      <div class="fader"><input type="range" id="${id}" min="0" max="1000" step="1"></div>`;
-    groupEls[s.group].appendChild(wrap);
+    if (s.group === 'master') {
+      // Compact horizontal slider in the display bar, next to Play.
+      wrap.className = 'master-slider';
+      wrap.innerHTML = `<label for="${id}" class="ms" title="${s.title || s.label}"><span aria-hidden="true">${s.icon}</span><span class="sr">${s.label}</span></label>
+        <input type="range" id="${id}" min="0" max="1000" step="1">
+        <output id="${id}-out" for="${id}"></output>`;
+      $('#master').appendChild(wrap);
+    } else {
+      wrap.className = 'slider';
+      wrap.innerHTML = `<label for="${id}" title="${s.title || s.label}"><span class="ms" aria-hidden="true">${s.icon}</span><span class="strip-name">${s.label}</span></label>
+        <output id="${id}-out" for="${id}"></output>
+        <div class="fader"><input type="range" id="${id}" min="0" max="1000" step="1" aria-label="${s.title || s.label}"></div>`;
+      (s.group === 'tone' ? $('#toneSliders') : groupEls[s.group]).appendChild(wrap);
+    }
     const input = wrap.querySelector('input'), out = wrap.querySelector('output');
     // Log sliders map 0..1000 exponentially; linear sliders map directly.
     const toVal = p => {
