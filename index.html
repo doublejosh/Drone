@@ -80,6 +80,10 @@
   .master-slider label { color: var(--accent); cursor: pointer; }
   .master-slider input[type=range] { flex: 1; min-width: 80px; --thumb: 16px; }
   .master-slider output { min-width: 3.2em; text-align: right; font-size: 13px; font-weight: 600; font-variant-numeric: tabular-nums; color: var(--text); }
+  /* Sequencer step chips: number · note · mode + octave. Inline in the stacked layout, tall pads in the app layout. */
+  button.chip.step { display: inline-flex; align-items: baseline; gap: 6px; }
+  .step small { font-size: 11px; opacity: .7; }
+  .step span { font-size: 13px; font-weight: 600; opacity: .85; }
   /* Chord HUD: big note tiles with interval labels, a glanceable cheat sheet for playing along. Root tile in the Key hue. */
   .chord { grid-column: 1 / -1; order: 2; display: flex; align-items: center; gap: 12px; }
   .chord-label { font-size: 11px; font-weight: 700; letter-spacing: .15em; text-transform: uppercase; color: var(--muted); }
@@ -169,7 +173,14 @@
   button.chip.toggle.active .ms { color: var(--hue); }
   .label { color: var(--muted); font-size: 13px; margin-right: 4px; }
   .label.ms { color: color-mix(in srgb, var(--hue) 55%, var(--muted)); }
-  .tempo input[type=range] { flex: 1; min-width: 120px; width: auto; }
+  /* Tempo: the BPM range is a vertical fader like the rest (fixed height when stacked; fills the Sequencer's height in the app layout). */
+  .tempo .bpm-fader { flex: 0 0 46px; align-self: center; height: 110px; }
+  /* Auto-advance: a big toggle (icon + label + hotkey badge) stacked above the BPM box. */
+  .tempo-stack { display: flex; flex-direction: column; gap: 8px; }
+  .row button.chip#autoBtn { display: flex; align-items: center; justify-content: center; gap: 8px; min-height: 48px; padding: 8px 16px; font-size: 15px; }
+  #autoBtn .ms { font-size: 24px; }
+  #autoBtn kbd { font-size: 10px; font-weight: 600; color: var(--muted); }
+  .bpm-box { display: flex; align-items: center; gap: 8px; }
   input[type=number] {
     width: 64px; background: var(--control); color: var(--text);
     border: 1px solid var(--line); border-radius: 8px; padding: 7px 8px;
@@ -403,14 +414,25 @@
       .titlebar { display: none; }
     }
 
-    /* Slots: one slim line for the chain, tempo controls pinned right. */
-    .p-slots { grid-area: slots; display: flex; align-items: center; gap: 8px 20px; padding: 10px 16px; }
+    /* Sequencer: 3× the old slim bar (180px). Every pixel here comes out of the faders and piano, so the
+       fader panels get short on windows under ~850px tall.
+       Steps are tall pads (number / big note / mode + octave) that wrap into a second row past ~8 steps;
+       tempo controls sit on the right, vertically centred. */
+    .p-slots { grid-area: slots; height: 180px; display: flex; flex-direction: column; gap: 10px; padding: 12px 16px; }
     .p-slots h2 { margin: 0; }
-    .slots-bar { flex: 1; }
-    .slots-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 32px; }
+    .slots-bar { flex: 1; min-height: 0; display: flex; align-items: stretch; gap: 12px 32px; }
     .slots-bar > .row { margin: 0; }
-    .slots-bar > .row:first-child { flex: 1 1 400px; }
-    .slots-bar > .tempo { flex: 0 1 380px; }
+    .slots-bar > .row:first-child { flex: 1 1 auto; min-width: 0; align-items: stretch; align-content: stretch; }
+    .slots-bar > .row:first-child button.chip { min-height: 0; }
+    .slots-bar > .tempo { flex: 0 0 auto; align-self: stretch; align-items: center; gap: 12px; }
+    .tempo .bpm-fader { flex: 0 0 46px; align-self: stretch; height: auto; }
+    button.chip.step { flex: 0 0 auto; width: clamp(72px, 6.5vw, 96px); flex-direction: column; align-items: center; justify-content: center; gap: 2px; padding: 4px; }
+    .step b { font-size: 36px; line-height: 1; }
+    .step small { font-size: 12px; }
+    .step span { font-size: 13px; }
+    #addSlot, #removeSlot { width: 48px; }
+    #addSlot .ms, #removeSlot .ms { font-size: 26px; }
+    .p-slots .tempo input[type=number] { font-size: 20px; width: 76px; padding: 8px; }
     .slot-hint { display: none; } /* already in the status bar */
   }
 </style>
@@ -489,16 +511,20 @@
       <span class="label slot-hint"><kbd>Shift</kbd> next step</span>
     </div>
     <div class="row tempo">
-      <button class="chip toggle icon" id="autoBtn" aria-pressed="false" title="Auto-advance steps" aria-label="Auto-advance steps"><span class="ms" aria-hidden="true">autoplay</span></button>
       <label class="label ms" for="bpmRange" title="Tempo"><span aria-hidden="true">avg_pace</span><span class="sr">Tempo</span></label>
-      <input type="range" id="bpmRange" min="1" max="240" step="1">
-      <input type="number" id="bpmInput" min="1" max="240" step="1" aria-label="Tempo in BPM">
-      <span class="label">BPM</span>
+      <div class="fader bpm-fader"><input type="range" id="bpmRange" min="1" max="400" step="1" aria-label="Tempo"></div>
+      <div class="tempo-stack">
+        <button class="chip toggle" id="autoBtn" aria-pressed="false" title="Auto-advance steps (A)" aria-label="Auto-advance steps" aria-keyshortcuts="A"><span class="ms" aria-hidden="true">autoplay</span><span>Auto</span><kbd aria-hidden="true">A</kbd></button>
+        <div class="bpm-box">
+          <input type="number" id="bpmInput" min="1" max="400" step="1" aria-label="Tempo in BPM">
+          <span class="label">BPM</span>
+        </div>
+      </div>
     </div>
     </div>
   </section>
 
-  <p class="hint"><kbd>Space</kbd> play/stop · <kbd>←</kbd><kbd>→</kbd> change key · <kbd>↑</kbd><kbd>↓</kbd> octave · <kbd>M</kbd> major/minor · <kbd>Shift</kbd> next step</p>
+  <p class="hint"><kbd>Space</kbd> play/stop · <kbd>←</kbd><kbd>→</kbd> change key · <kbd>↑</kbd><kbd>↓</kbd> octave · <kbd>M</kbd> major/minor · <kbd>Shift</kbd> next step · <kbd>A</kbd> auto-advance · <kbd>Del</kbd> remove selected step</p>
 </main>
 
 <script>
@@ -564,12 +590,23 @@ function removeSlot() {
   render();
 }
 
+// Removes step i (any step, not just the active one). Removing the active step loads its neighbour (glides);
+// removing another step keeps the current sound and just re-indexes.
+function removeStep(i) {
+  if (state.slots.length <= 1) return;
+  if (i === state.slot) return removeSlot();
+  saveSlot();
+  state.slots.splice(i, 1);
+  if (i < state.slot) state.slot--;
+  render();
+}
+
 const nextSlot = () => selectSlot((state.slot + 1) % state.slots.length);
 
 // ---------- Auto mode (slot sequencer) ----------
 // Steps are timed from lastStep, so changing BPM mid-beat re-times the pending step
 // instead of restarting the countdown (dragging the slider won't stall it).
-const BPM_MIN = 1, BPM_MAX = 240;
+const BPM_MIN = 1, BPM_MAX = 400;
 let autoTimer, lastStep = 0;
 
 function scheduleAuto() {
@@ -1047,6 +1084,14 @@ function buildUI() {
     if (e.key === 'Shift') { if (!e.repeat) nextSlot(); return; }
     if (e.target.tagName === 'INPUT' && e.key.startsWith('Arrow')) return;
     if (e.code === 'Space') { e.preventDefault(); setPlaying(!state.playing); return; }
+    if (e.key === 'Delete' || e.key === 'Backspace') { // remove the focused sequencer step
+      const i = [...$('#slots').children].indexOf(e.target);
+      if (i >= 0) { e.preventDefault(); removeStep(i); }
+      return;
+    }
+    if (e.key.toLowerCase() === 'a' && !e.metaKey && !e.ctrlKey && !e.altKey) { // auto-advance on/off
+      e.preventDefault(); if (!e.repeat) setAuto(!state.auto); return;
+    }
     if (e.key === 'ArrowRight') state.note = (state.note + 1) % 12;
     else if (e.key === 'ArrowLeft') state.note = (state.note + 11) % 12;
     else if (e.key === 'ArrowUp') state.octave = Math.min(4, state.octave + 1);
@@ -1074,15 +1119,22 @@ function render() {
   document.querySelectorAll('[data-octave]').forEach(b => b.classList.toggle('active', +b.dataset.octave === state.octave));
   document.querySelectorAll('[data-wave]').forEach(b => b.classList.toggle('active', b.dataset.wave === state.wave));
   document.querySelectorAll('[data-voice]').forEach(b => b.classList.toggle('active', state.voices[b.dataset.voice]));
-  // Slot chips are rebuilt each render since the count changes.
+  // Slot chips are rebuilt each render since the count changes. If a pad had keyboard focus, focus is
+  // restored to the pad at the same index (clamped), so Delete can be pressed repeatedly.
+  const focusedPad = [...$('#slots').children].indexOf(document.activeElement);
   $('#slots').replaceChildren(...state.slots.map((saved, i) => {
     const s = i === state.slot ? state : saved;
     const b = document.createElement('button');
     b.className = 'chip' + (i === state.slot ? ' active' : '');
-    b.textContent = `${i + 1} · ${NOTES[s.note]} ${s.mode === 'major' ? 'maj' : 'min'} ${s.octave}`;
-    b.onclick = () => selectSlot(i);
+    const mode = s.mode === 'major' ? 'maj' : 'min';
+    b.classList.add('step');
+    b.innerHTML = `<small>${i + 1}</small><b>${NOTES[s.note]}</b><span>${mode} ${s.octave}</span>`;
+    b.setAttribute('aria-label', `Step ${i + 1}: ${NOTES[s.note]} ${s.mode}, octave ${s.octave}`);
+    // Explicit focus: Safari doesn't focus buttons on click, and the Delete shortcut needs a focused pad.
+    b.onclick = () => { selectSlot(i); $('#slots').children[i]?.focus(); };
     return b;
   }));
+  if (focusedPad >= 0) $('#slots').children[Math.min(focusedPad, state.slots.length - 1)]?.focus();
   $('#addSlot').disabled = state.slots.length >= MAX_SLOTS;
   $('#removeSlot').disabled = state.slots.length <= 1;
   document.querySelectorAll('[data-amb]').forEach(b => {

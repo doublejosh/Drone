@@ -57,7 +57,8 @@ At `min-width: 900px` and `min-height: 600px`, `<main>` becomes a full-viewport 
                   Below 1400px wide the display spans the whole top row and the title is hidden.
 "left  right"     1fr row. Left (.col-left): Key (piano, then mode/octave rows) over Tone (button rows plus the Fade strip on its right).
                   Right (.col-right): Filter | FX on top, Ambience full width below.
-"slots slots"     Sequencer: one slim line with heading, step chain, tempo pinned right
+"slots slots"     Sequencer: step pads (number / big note / mode + octave) with tempo pinned right. Fixed 180px
+                  (3× the old bar). It takes height from the faders, which get short below ~850px tall.
 "hint  hint"      status bar with keyboard shortcuts
 ```
 
@@ -73,9 +74,10 @@ At `min-width: 900px` and `min-height: 600px`, `<main>` becomes a full-viewport 
 
 ### Faders and range sliders
 All `input[type=range]` are custom-drawn. The filled part of the track (WebKit) comes from a CSS var `--p` (0..1), which `fillRange(el)` sets. A document-level `input` listener covers user drags, but **code that sets a range's `.value` must call `fillRange(el)` itself**. Firefox uses `::-moz-range-progress` and needs no JS.
-- **Vertical faders** (Shape and Ambience): a range inside `.fader` is rotated with `writing-mode: vertical-lr; direction: rtl`, so max is at the top. Its cap is a 30×16 rectangle (`--cap`). The tick scale is `.fader::before` (minor ticks every 10%) and `::after` (major ticks at 0/50/100%), inset by `--cap / 2` so the ticks line up with the cap's centre line.
+- **Vertical faders** (Shape, Tone fade, Ambience, BPM): a range inside `.fader` is rotated with `writing-mode: vertical-lr; direction: rtl`, so max is at the top. Its cap is a 30×16 rectangle (`--cap`). The tick scale is `.fader::before` (minor ticks every 10%) and `::after` (major ticks at 0/50/100%), inset by `--cap / 2` so the ticks line up with the cap's centre line.
 - **Channel strips:** strips read top to bottom. A Shape strip is `label` (icon + name) / `output` / `.fader`. An Ambience strip is toggle chip (icon + name) / `output` (level %) / `.fader`. Strip text is large and scales with `vw` via `clamp()`: names run 13–18px, values 13–16px, and icons use `--strip-icon` (26–38px). Two-word names wrap to two lines on narrow screens. Every Shape label reserves two lines of height so the faders stay equal length. This applies in the app layout and in the stacked layout below 1200px. Keep new names short; one word is best for Ambience.
-- **Horizontal** (only BPM now): a 28px hit area, a 6px track and a 20px round thumb.
+- **Horizontal** (only master Volume now): a 28px hit area, a 6px track and a round thumb.
+- **BPM** (`#bpmRange`) is a vertical fader too, inside `.fader.bpm-fader`. It's 110px tall in the stacked layout and fills the Sequencer's height in the app layout.
 
 ## State model
 
@@ -86,7 +88,7 @@ state = {
   detune, cutoff, lfoRate, lfoDepth, reverb, glide, waveFade, volume,  // slider-backed numbers
   playing: bool,
   slot: index, slots: [{ note, mode, octave }, ...],  // key slots, 1..MAX_SLOTS (12)
-  auto: bool, bpm: BPM_MIN..BPM_MAX (1–240),          // slot auto-advance
+  auto: bool, bpm: BPM_MIN..BPM_MAX (1–400),          // slot auto-advance
   ambience: { [soundKey]: { on: bool, level: 0..1 } }, // one entry per SOUNDS key
 }
 ```
@@ -94,9 +96,10 @@ state = {
 **Key slots:** `state.note`, `state.mode` and `state.octave` always hold the *active* slot, so all existing controls edit it unchanged. `state.slots[]` is authoritative only for *inactive* slots, so call `saveSlot()` before reading or reordering `slots` if the active one matters.
 - `selectSlot(i)` runs `saveSlot()`, then `loadSlot(i)`, which calls `applyPitch()`, so a switch glides like any other pitch change.
 - **Shift** steps to `(slot + 1) % length` (key repeat is ignored), and clicking a chip jumps to that slot.
+- **Delete / Backspace** on a focused pad calls `removeStep(i)`, which removes that step even if it isn't the active one. Clicking a pad focuses it explicitly (Safari doesn't focus buttons on click). `render()` restores focus to the pad at the same index (clamped) after rebuilding, so repeated Deletes keep working. With no pad focused, Delete does nothing.
 - `addSlot()` inserts a copy of the active slot right after it and selects the copy. `removeSlot()` deletes the active slot and loads the slot that slides into its place. A minimum of 1 slot is enforced, and the +/− buttons disable at the limits.
-- The slot chips in `#slots` are rebuilt on every `render()`.
-- **Auto mode** (`#autoBtn`, `setAuto`, `scheduleAuto`): a `setTimeout` chain calls `nextSlot()` once per beat (`60000 / bpm` ms), but only while `state.playing`. Each step is timed from `lastStep`, so `setBpm()` re-times the *pending* step rather than restarting the countdown; dragging the slider doesn't stall it. Pressing Play resets `lastStep`, so the first step lands one beat later. The timing is wall-clock and not sample-accurate, which is fine for slow chord changes. For tight rhythm, schedule against `ctx.currentTime` instead.
+- The slot chips in `#slots` are rebuilt on every `render()` as `.step` pads: `<small>` step number, `<b>` note, `<span>` mode + octave, and an `aria-label` that spells it out.
+- **Auto mode** (`#autoBtn`, `setAuto`, `scheduleAuto`; hotkey **A**; the button is a large Auto toggle stacked above the BPM box in `.tempo-stack`): a `setTimeout` chain calls `nextSlot()` once per beat (`60000 / bpm` ms), but only while `state.playing`. Each step is timed from `lastStep`, so `setBpm()` re-times the *pending* step rather than restarting the countdown; dragging the slider doesn't stall it. Pressing Play resets `lastStep`, so the first step lands one beat later. The timing is wall-clock and not sample-accurate, which is fine for slow chord changes. For tight rhythm, schedule against `ctx.currentTime` instead.
 - **Tempo UI:** `#bpmRange` and `#bpmInput` mirror each other. The number box applies valid values as you type and clamps or reverts on `change`. Both live in the Sequencer panel, not in `SLIDERS`, so they're wired by hand in `buildUI()`. The global keydown handler ignores events from `type=number` inputs so typing there doesn't trigger shortcuts.
 - To add more per-slot fields (e.g. wave), include them in `saveSlot()` and the `slots` defaults. `loadSlot` uses `Object.assign`, so it picks them up automatically. Then call `applyParams()` in `loadSlot` as well.
 
