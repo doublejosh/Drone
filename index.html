@@ -67,6 +67,18 @@
   .key small { font-size: .45em; font-weight: 500; color: var(--hue-key); margin-left: .25em; }
   .meta { color: var(--muted); font-variant-numeric: tabular-nums; margin-top: 8px; }
   .meta b { color: var(--text); font-weight: 600; white-space: nowrap; }
+  /* Chord HUD: big note tiles with interval labels, a glanceable cheat sheet for playing along. Root tile in the Key hue. */
+  .chord { grid-column: 1 / -1; display: flex; align-items: center; gap: 12px; }
+  .chord-label { font-size: 11px; font-weight: 700; letter-spacing: .15em; text-transform: uppercase; color: var(--muted); }
+  .chord-tones { display: flex; gap: 8px; }
+  .tone {
+    display: flex; flex-direction: column; align-items: center; min-width: 2.4em; padding: 4px 10px 3px;
+    background: var(--control); border: 1px solid var(--line); border-radius: 10px;
+  }
+  .tone b { font-size: 36px; font-weight: 700; line-height: 1; letter-spacing: -.02em; }
+  .tone small { font-size: 11px; font-weight: 700; color: var(--muted); letter-spacing: .05em; margin-top: 2px; }
+  .tone.root { border-color: var(--hue-key); background: color-mix(in srgb, var(--hue-key) 18%, var(--control)); }
+  .tone.root b, .tone.root small { color: var(--hue-key); }
   /* Canvas is absolutely positioned in its wrapper so its JS-set pixel size can't feed back into layout. */
   .scope-wrap { grid-column: 1 / -1; position: relative; height: 110px; }
   canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; border-radius: 8px; background: #0a0c10; }
@@ -303,11 +315,17 @@
     section { margin: 0; padding: 14px 16px; min-height: 0; overflow: auto; }
 
     /* Display shrinks to a single transport strip: key name | mini scope | play. */
-    .display { grid-area: display; grid-template-columns: auto minmax(0, 1fr) auto; padding: 8px 10px 8px 16px; gap: 16px; }
+    .display { grid-area: display; grid-template-columns: auto auto minmax(0, 1fr) auto; padding: 8px 10px 8px 16px; gap: 16px; }
+    .chord { grid-column: auto; order: 1; gap: 10px; }
+    .chord-label { writing-mode: vertical-rl; transform: rotate(180deg); font-size: 10px; }
+    .chord-tones { gap: 6px; }
+    .tone { padding: 3px 8px 2px; }
+    .tone b { font-size: clamp(30px, 4.4vh, 44px); }
+    .tone small { font-size: 11px; margin-top: 1px; }
     .key { font-size: 32px; }
     .meta { font-size: 12px; margin-top: 2px; }
-    .scope-wrap { grid-column: auto; order: 1; height: 48px; }
-    .play { order: 2; width: 48px; height: 48px; }
+    .scope-wrap { grid-column: auto; order: 2; height: 48px; }
+    .play { order: 3; width: 48px; height: 48px; }
     .play .ms { font-size: 28px; }
 
     /* Key: piano on the left, mode and octave rows stacked to its right. */
@@ -358,9 +376,10 @@
   <div class="display">
     <div>
       <div class="key" id="keyName">A<small>minor</small></div>
-      <div class="meta">Root <b id="rootHz">110.0 Hz</b> · Chord <b id="chordTones">A · C · E</b></div>
+      <div class="meta">Root <b id="rootHz">110.0 Hz</b></div>
     </div>
     <button class="play" id="playBtn" aria-pressed="false" aria-label="Play"><span class="ms" aria-hidden="true">play_arrow</span></button>
+    <div class="chord" role="group" aria-label="Chord tones"><span class="chord-label">Chord</span><div class="chord-tones" id="chordTones"></div></div>
     <div class="scope-wrap"><canvas id="scope"></canvas></div>
   </div>
 
@@ -381,17 +400,17 @@
   </section>
 
   <section class="p-slots">
-    <h2>Slots</h2>
+    <h2>Sequencer</h2>
     <div class="slots-bar">
     <div class="row" style="margin-top:0">
       <span id="slots" style="display:contents"></span>
-      <button class="chip icon" id="addSlot" title="Add slot (copy of current)" aria-label="Add slot"><span class="ms" aria-hidden="true">add</span></button>
-      <button class="chip icon" id="removeSlot" title="Remove current slot" aria-label="Remove slot"><span class="ms" aria-hidden="true">remove</span></button>
+      <button class="chip icon" id="addSlot" title="Add step (copy of current)" aria-label="Add step"><span class="ms" aria-hidden="true">add</span></button>
+      <button class="chip icon" id="removeSlot" title="Remove current step" aria-label="Remove step"><span class="ms" aria-hidden="true">remove</span></button>
       <span style="flex:1"></span>
-      <span class="label slot-hint"><kbd>Shift</kbd> next slot</span>
+      <span class="label slot-hint"><kbd>Shift</kbd> next step</span>
     </div>
     <div class="row tempo">
-      <button class="chip toggle icon" id="autoBtn" aria-pressed="false" title="Auto-advance slots" aria-label="Auto-advance slots"><span class="ms" aria-hidden="true">autoplay</span></button>
+      <button class="chip toggle icon" id="autoBtn" aria-pressed="false" title="Auto-advance steps" aria-label="Auto-advance steps"><span class="ms" aria-hidden="true">autoplay</span></button>
       <label class="label ms" for="bpmRange" title="Tempo"><span aria-hidden="true">avg_pace</span><span class="sr">Tempo</span></label>
       <input type="range" id="bpmRange" min="1" max="240" step="1">
       <input type="number" id="bpmInput" min="1" max="240" step="1" aria-label="Tempo in BPM">
@@ -425,7 +444,7 @@
     <div class="amb" id="ambience"></div>
   </section>
 
-  <p class="hint"><kbd>Space</kbd> play/stop · <kbd>←</kbd><kbd>→</kbd> change key · <kbd>↑</kbd><kbd>↓</kbd> octave · <kbd>M</kbd> major/minor · <kbd>Shift</kbd> next slot</p>
+  <p class="hint"><kbd>Space</kbd> play/stop · <kbd>←</kbd><kbd>→</kbd> change key · <kbd>↑</kbd><kbd>↓</kbd> octave · <kbd>M</kbd> major/minor · <kbd>Shift</kbd> next step</p>
 </main>
 
 <script>
@@ -979,7 +998,10 @@ function render() {
   $('#keyName').innerHTML = `${root}<small>${state.mode}</small>`;
   $('#rootHz').textContent = hz(midiOf(state.note, state.octave)).toFixed(1) + ' Hz';
   const tones = [0, thirdOffset(), 7].map(o => NOTES[(state.note + o) % 12]);
-  $('#chordTones').textContent = tones.join(' · ');
+  const ivals = ['R', state.mode === 'minor' ? '♭3' : '3', '5'];
+  $('#chordTones').innerHTML = tones.map((t, i) =>
+    `<span class="tone${i ? '' : ' root'}"><b>${t}</b><small>${ivals[i]}</small></span>`).join('');
+  $('#chordTones').parentElement.setAttribute('aria-label', 'Chord ' + tones.join(' '));
   document.title = `${root} ${state.mode} · Drone Synth`;
 
   document.querySelectorAll('[data-note]').forEach(b => b.classList.toggle('active', +b.dataset.note === state.note));

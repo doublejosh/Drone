@@ -15,7 +15,7 @@ To check a change, load the page, press Play, and exercise the control you touch
 | Lines (approx) | Section | Notes |
 |---|---|---|
 | `<style>` | Theme + layout | Colors are CSS vars on `:root`; see **Color system**. Dark-only. Breakpoint at 560px shortens the piano and the Play button. Key picker is a one-octave piano (`.piano`): white keys are flex items, and black keys are absolutely positioned. Each black key's `left` is computed in `buildUI()` from `BLACK_AFTER_WHITE` and the `--gap`/`--bw` CSS vars. Black keys are out of flex flow, so DOM and tab order stay chromatic (C, C♯, D…). |
-| `<main>` markup | Static shell | `.titlebar` (h1), `.display` (key name, Hz, chord, Play button, `.scope-wrap > <canvas id="scope">`), then `<section>`s: **Key** (`.p-key`), **Slots** (`.p-slots`, rows wrapped in `.slots-bar`), **Tone** (`.p-tone`), **Shape** (`.p-shape`), **Ambience** (`.p-amb`), then the shortcut `.hint`. DOM order is the stacked/mobile order, and the app grid places panels by `grid-area`. Containers `#notes`, `#octaves`, `#slots`, `#waves`, `#sliders`, `#ambience` are filled by JS. Mode and voice chips are hard-coded in HTML. |
+| `<main>` markup | Static shell | `.titlebar` (h1), `.display` (key name, Hz, chord, Play button, `.scope-wrap > <canvas id="scope">`), then `<section>`s: **Key** (`.p-key`), **Sequencer** (`.p-slots`, rows wrapped in `.slots-bar`; the UI says "Sequencer"/"steps", while code and docs still say slots), **Tone** (`.p-tone`), **Shape** (`.p-shape`), **Ambience** (`.p-amb`), then the shortcut `.hint`. DOM order is the stacked/mobile order, and the app grid places panels by `grid-area`. Containers `#notes`, `#octaves`, `#slots`, `#waves`, `#sliders`, `#ambience` are filled by JS. Mode and voice chips are hard-coded in HTML. |
 | `NOTES`, `WAVES`, `VOICES`, `state`, `SLIDERS` | Config + state | The single source of truth. Most features start here. |
 | Music helpers | `midiOf`, `hz`, `thirdOffset`, `voiceOffset` | MIDI math; A4 = 440 Hz; octave numbering is scientific (C4 = MIDI 60). |
 | Audio engine | `initAudio`, `applyPitch`, `applyParams`, `setPlaying`, `makeImpulse` | Graph is built once, lazily, on first play. |
@@ -36,7 +36,7 @@ Each panel is identified by its own hue, and nesting depth is shown by lightness
   | Tone | `--hue-tone` | violet |
   | Shape › Sound / Filter / Transitions | `--hue-sound` / `--hue-filter` / `--hue-motion` | orange / teal / pink |
   | Ambience | `--hue-amb` | green |
-  | Slots | `--hue-slots` | yellow |
+  | Sequencer (`.p-slots`) | `--hue-slots` | yellow |
   | Display, Shape frame | default `--hue` | neutral grey (the Shape groups carry the color) |
 
   Panels map to hues in CSS (`.p-key { --hue: var(--hue-key) }` …). Shape groups get theirs from `SLIDER_GROUPS[].hue`, which `buildUI()` sets inline on each fieldset.
@@ -66,7 +66,7 @@ At `min-width: 900px` and `min-height: 600px`, `<main>` becomes a full-viewport 
 - Below that size, the media query doesn't apply and the page falls back to the stacked, scrolling layout (phones). There the faders have a fixed 150px height and the groups wrap.
 - Sections get `min-height: 0; overflow: auto`, so if a panel's content outgrows its cell it scrolls internally instead of the page.
 - The canvas is absolutely positioned inside `.scope-wrap`. `draw()` sets its pixel size from `clientHeight`, and without the wrapper that would feed back into grid sizing.
-- Adding controls: check that 1024×640 still fits. There, a strip is about 46px wide (Ambience) to 60px (Shape), and the faders are about 110px tall. Each new slider or sound narrows every strip in its panel. Anything added to the Key/Tone or Slots rows takes height away from the faders.
+- Adding controls: check that 1024×640 still fits. There, a strip is about 46px wide (Ambience) to 60px (Shape), and the faders are about 110px tall. Each new slider or sound narrows every strip in its panel. Anything added to the Key/Tone or Sequencer rows takes height away from the faders.
 
 ### Faders and range sliders
 All `input[type=range]` are custom-drawn. The filled part of the track (WebKit) comes from a CSS var `--p` (0..1), which `fillRange(el)` sets. A document-level `input` listener covers user drags, but **code that sets a range's `.value` must call `fillRange(el)` itself**. Firefox uses `::-moz-range-progress` and needs no JS.
@@ -94,7 +94,7 @@ state = {
 - `addSlot()` inserts a copy of the active slot right after it and selects the copy. `removeSlot()` deletes the active slot and loads the slot that slides into its place. A minimum of 1 slot is enforced, and the +/− buttons disable at the limits.
 - The slot chips in `#slots` are rebuilt on every `render()`.
 - **Auto mode** (`#autoBtn`, `setAuto`, `scheduleAuto`): a `setTimeout` chain calls `nextSlot()` once per beat (`60000 / bpm` ms), but only while `state.playing`. Each step is timed from `lastStep`, so `setBpm()` re-times the *pending* step rather than restarting the countdown; dragging the slider doesn't stall it. Pressing Play resets `lastStep`, so the first step lands one beat later. The timing is wall-clock and not sample-accurate, which is fine for slow chord changes. For tight rhythm, schedule against `ctx.currentTime` instead.
-- **Tempo UI:** `#bpmRange` and `#bpmInput` mirror each other. The number box applies valid values as you type and clamps or reverts on `change`. Both live in the Slots panel, not in `SLIDERS`, so they're wired by hand in `buildUI()`. The global keydown handler ignores events from `type=number` inputs so typing there doesn't trigger shortcuts.
+- **Tempo UI:** `#bpmRange` and `#bpmInput` mirror each other. The number box applies valid values as you type and clamps or reverts on `change`. Both live in the Sequencer panel, not in `SLIDERS`, so they're wired by hand in `buildUI()`. The global keydown handler ignores events from `type=number` inputs so typing there doesn't trigger shortcuts.
 - To add more per-slot fields (e.g. wave), include them in `saveSlot()` and the `slots` defaults. `loadSlot` uses `Object.assign`, so it picks them up automatically. Then call `applyParams()` in `loadSlot` as well.
 
 The update pattern every control follows is **mutate `state` → call `applyPitch()` and/or `applyParams()` → call `render()`**.
@@ -184,7 +184,7 @@ Append it to `WAVES`. `initAudio()` automatically builds an osc pair and a wave 
 - the mode chips in the HTML (`data-mode`)
 - the `M` shortcut, which toggles between the two
 - `#randomBtn`, which picks between the two
-- `render()`'s chord display `[0, thirdOffset(), 7]`, plus the `<small>` label
+- `render()`'s chord HUD: tones `[0, thirdOffset(), 7]`, the interval labels `ivals` (`R`, `♭3`/`3`, `5`), plus the `<small>` mode label
 
 Generalize it with a `MODES` table, e.g. `{ minor: { third: 3, fifth: 7 }, sus4: { third: 5, fifth: 7 } }`, and read from it everywhere listed above.
 
@@ -201,7 +201,7 @@ Add a branch in the `keydown` listener inside `buildUI()`. A branch that doesn't
 - **Voices that match the wave's own harmonics get masked.** Sawtooth and square already contain strong overtones, so a quiet `+12` voice is nearly inaudible on them (`up` was once at 0.25 and seemed broken). Give overtone-aligned voices enough level, and test new voices on both sine and sawtooth.
 - **Don't swap `o.type` on a running oscillator.** Doing so changes the waveform mid-cycle and clicks, which is why waves crossfade between dedicated oscillators.
 - **Waves differ in loudness.** Square is noticeably louder than sine, and the crossfade doesn't normalize that. If needed, add a per-wave level to the wave-gain target.
-- **The chord readout doesn't follow the voice toggles.** `#chordTones` always shows root, third and fifth, whichever voices are enabled.
+- **The chord HUD doesn't follow the voice toggles.** `#chordTones` (in `.chord`, inside the display strip) is rebuilt by `render()` as three `.tone` tiles: a big note name with its interval below, and the root tile in the Key hue. It always shows root, third and fifth, whichever voices are enabled. In the app layout the tile size scales with viewport height (`clamp(30px, 4.4vh, 44px)`), so it grows on tall screens without taking fader height at 1024×640.
 - **`applyPitch` reads the in-flight frequency.** It uses `o.frequency.value` as the glide start point, so a glide that is interrupted continues from where it was.
 - **`render()` updates `document.title`** with the current key.
 - **Ambience buffers are generated on the main thread.** Each takes about 0.1–0.3s the first time a sound needs it (Rain needs three). The UI hitches briefly but the audio doesn't glitch. If you add many sounds, consider pre-generating buffers in `initAudio()` or in an idle callback.
