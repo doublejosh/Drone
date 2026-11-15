@@ -211,6 +211,7 @@ Add a branch in the `keydown` listener inside `buildUI()`. A branch that doesn't
 - **`applyPitch` reads the in-flight frequency.** It uses `o.frequency.value` as the glide start point, so a glide that is interrupted continues from where it was.
 - **`render()` updates `document.title`** with the current key.
 - **Ambience buffers are generated on the main thread.** Each takes about 0.1–0.3s the first time a sound needs it (Rain needs three). The UI hitches briefly but the audio doesn't glitch. If you add many sounds, consider pre-generating buffers in `initAudio()` or in an idle callback.
+- **iOS silent switch.** Safari mutes Web Audio when the ring/silent switch is on. `unlockIOSAudio()` (called from `setPlaying(true)`, inside the gesture) sets `navigator.audioSession.type = 'playback'`, or on older iOS loops a silent `<audio>` element. `resumeIfNeeded()` resumes an `interrupted` context on `statechange`/`visibilitychange`. Keep `ctx.resume()` synchronous in the tap handler (no `await` before it), or iOS refuses it.
 - **No persistence.** A reload returns every setting to the defaults in `state`.
 
 ## Icons
