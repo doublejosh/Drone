@@ -7,16 +7,43 @@
 <!-- Material Symbols, subset to the icons used. icon_names MUST stay alphabetical; add new names here or they render as text. -->
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200&icon_names=add,air,airwave,autoplay,avg_pace,compare_arrows,contrast,filter_alt,gradient,height,layers,local_fire_department,pest_control,play_arrow,rainy,remove,shuffle,spatial_audio,speed,stop,swap_vert,trending_up,volume_up,waves&display=block">
 <style>
+  /* Color system:
+     - Surface ladder: nesting depth = lightness (bg → panel → sub → control).
+     - Every panel / sub-panel sets --hue; headings, borders, selected choices, toggle LEDs and fader fills inside it
+       derive from it, so each area is identifiable by color alone.
+     - Choice selected = solid --hue fill. Toggle on = tinted + lit LED dot. */
   :root {
-    --bg: #0d0f14;
-    --panel: #161a22;
+    --bg: #0b0d12;
+    --panel: #151922;
+    --sub: #1b202b;
+    --control: #222835;
+    --control-hi: #2b3240;
     --line: #262c38;
     --text: #e6e9ef;
     --muted: #8a93a6;
-    --accent: #7cc4ff;
+    --ink: #0b0d12;            /* text on a solid hue fill */
+    --accent: #7cc4ff;         /* scope + play gradient only */
     --accent-2: #b48cff;
+    --hue: #c7cdd8;            /* neutral default */
+    --hue-key: #5fb3ff;
+    --hue-tone: #b48cff;
+    --hue-sound: #ffa04d;
+    --hue-filter: #2dd4bf;
+    --hue-motion: #ff7eb6;
+    --hue-amb: #6ee7a0;
+    --hue-slots: #ffd23f;
   }
-  * { box-sizing: border-box; }
+  /* Derived tokens are declared on every element so they follow the nearest --hue (a :root declaration would freeze them). */
+  *, ::before, ::after {
+    box-sizing: border-box;
+    --hue-soft: color-mix(in srgb, var(--hue) 16%, transparent);
+    --hue-line: color-mix(in srgb, var(--hue) 40%, var(--line));
+    --hue-ring: color-mix(in srgb, var(--hue) 50%, transparent);
+  }
+  .p-key { --hue: var(--hue-key); }
+  .p-tone { --hue: var(--hue-tone); }
+  .p-amb { --hue: var(--hue-amb); }
+  .p-slots { --hue: var(--hue-slots); }
   body {
     margin: 0;
     background: var(--bg);
@@ -37,7 +64,7 @@
     align-items: center;
   }
   .key { font-size: clamp(44px, 10vw, 72px); font-weight: 700; line-height: 1; letter-spacing: -.02em; }
-  .key small { font-size: .45em; font-weight: 500; color: var(--accent); margin-left: .25em; }
+  .key small { font-size: .45em; font-weight: 500; color: var(--hue-key); margin-left: .25em; }
   .meta { color: var(--muted); font-variant-numeric: tabular-nums; margin-top: 8px; }
   .meta b { color: var(--text); font-weight: 600; white-space: nowrap; }
   /* Canvas is absolutely positioned in its wrapper so its JS-set pixel size can't feed back into layout. */
@@ -49,18 +76,32 @@
     border: 2px solid var(--accent);
     background: transparent; color: var(--accent);
     font-size: 15px; font-weight: 700; letter-spacing: .1em; cursor: pointer;
-    transition: background .2s, color .2s;
+    transition: background .2s, color .2s, box-shadow .2s;
   }
-  .play.on { background: var(--accent); color: var(--bg); }
+  .play.on {
+    background: linear-gradient(135deg, var(--accent), var(--accent-2)); color: var(--ink); border-color: transparent;
+    box-shadow: 0 0 18px color-mix(in srgb, var(--accent-2) 45%, transparent);
+  }
 
+  /* Panels: hue-tinted border, a faint top-down wash, and a colored heading with a dot. */
   section {
     margin-top: 16px;
-    background: var(--panel);
-    border: 1px solid var(--line);
+    background: linear-gradient(var(--hue-soft), transparent 90px), var(--panel);
+    border: 1px solid var(--hue-line);
     border-radius: 14px;
     padding: 16px 20px;
   }
-  section h2 { font-size: 12px; letter-spacing: .15em; text-transform: uppercase; color: var(--muted); margin: 0 0 12px; font-weight: 600; }
+  section h2 { font-size: 12px; letter-spacing: .15em; text-transform: uppercase; color: var(--hue); margin: 0 0 12px; font-weight: 700; }
+  section h2::before {
+    content: ""; display: inline-block; width: 8px; height: 8px; margin-right: 8px; vertical-align: 1px;
+    border-radius: 50%; background: var(--hue); box-shadow: 0 0 6px var(--hue-ring);
+  }
+  /* Slots is a short bar, so the 90px wash would tint all of it; use a lighter one. */
+  .p-slots { background: linear-gradient(color-mix(in srgb, var(--hue) 7%, transparent), transparent), var(--panel); }
+  .p-shape { --hue: #c7cdd8; }
+  .p-shape { background: var(--panel); border-color: var(--line); } /* neutral frame; its groups carry the color */
+  .p-shape h2 { color: var(--muted); }
+  .p-shape h2::before { background: var(--muted); box-shadow: none; }
 
   /* Piano octave: 7 flex white keys; black keys absolutely positioned over the gaps (left set in JS). */
   .piano { --gap: 3px; --bw: calc((100% - 6 * var(--gap)) / 7 * 0.6); position: relative; display: flex; gap: var(--gap); height: 130px; user-select: none; }
@@ -76,27 +117,40 @@
     outline: 1px solid var(--line); border-radius: 0 0 6px 6px;
   }
   .pk-black:hover { background: #262c38; }
-  .piano button.active { background: var(--accent); color: var(--bg); }
+  .piano button.active { background: var(--hue); color: var(--ink); }
   .row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; align-items: center; }
+
+  /* Controls. Idle: --control. Choice selected (.active): solid --hue. Toggle (.toggle): LED dot, lit + tinted when on. */
   button.chip {
-    background: #1d222c; color: var(--text);
+    background: var(--control); color: var(--text);
     border: 1px solid var(--line); border-radius: 8px;
     padding: 9px 4px; font: inherit; font-weight: 600; cursor: pointer;
-    min-width: 0;
+    min-width: 0; transition: background .15s, border-color .15s, color .15s;
   }
   .row button.chip { padding: 8px 14px; }
-  button.chip:hover { border-color: #3a4252; }
-  button.chip:disabled { opacity: .35; cursor: default; border-color: var(--line); }
-  button.chip.active { background: var(--accent); color: var(--bg); border-color: var(--accent); }
-  button.chip.toggle.active { background: var(--accent-2); border-color: var(--accent-2); }
+  button.chip:hover { background: var(--control-hi); border-color: var(--hue-line); }
+  button.chip:focus-visible { outline: 2px solid var(--hue-ring); outline-offset: 1px; }
+  button.chip:disabled { opacity: .35; cursor: default; background: var(--control); border-color: var(--line); }
+  button.chip.active { background: var(--hue); color: var(--ink); border-color: var(--hue); }
+  button.chip.toggle { position: relative; }
+  button.chip.toggle::after {
+    content: ""; position: absolute; top: 5px; right: 5px; width: 7px; height: 7px; border-radius: 50%;
+    background: #3a4252; transition: background .15s, box-shadow .15s;
+  }
+  button.chip.toggle.active {
+    background: color-mix(in srgb, var(--hue) 26%, var(--control)); color: #fff; border-color: var(--hue);
+  }
+  button.chip.toggle.active::after { background: var(--hue); box-shadow: 0 0 6px var(--hue), 0 0 2px var(--hue); }
+  button.chip.toggle.active .ms { color: var(--hue); }
   .label { color: var(--muted); font-size: 13px; margin-right: 4px; }
+  .label.ms { color: color-mix(in srgb, var(--hue) 55%, var(--muted)); }
   .tempo input[type=range] { flex: 1; min-width: 120px; width: auto; }
   input[type=number] {
-    width: 64px; background: #1d222c; color: var(--text);
+    width: 64px; background: var(--control); color: var(--text);
     border: 1px solid var(--line); border-radius: 8px; padding: 7px 8px;
     font: inherit; font-weight: 600; font-variant-numeric: tabular-nums;
   }
-  input[type=number]:focus { outline: none; border-color: var(--accent); }
+  input[type=number]:focus { outline: none; border-color: var(--hue); }
 
   /* Shape: a row of .slider-group fieldsets (each flexes by its slider count, --n), each a row of
      vertical channel strips: value / fader / icon + name. */
@@ -104,19 +158,24 @@
   .slider-group {
     flex: var(--n) 1 0; min-width: calc(var(--n) * 58px); margin: 0; padding: 4px 6px 8px;
     display: flex; flex-direction: column;
-    border: 1px solid var(--line); border-radius: 10px; background: rgba(255, 255, 255, .015);
+    border: 1px solid var(--hue-line); border-radius: 10px;
+    background: linear-gradient(var(--hue-soft), transparent 70px), color-mix(in srgb, var(--hue) 5%, var(--sub));
   }
-  .slider-group legend { padding: 0 6px; margin-left: 2px; font-size: 11px; letter-spacing: .12em; text-transform: uppercase; color: var(--accent); font-weight: 600; }
+  .slider-group legend { padding: 0 6px; margin-left: 2px; font-size: 11px; letter-spacing: .12em; text-transform: uppercase; color: var(--hue); font-weight: 700; }
   .group-sliders { flex: 1; display: flex; gap: 2px; }
   .slider, .amb-item { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; align-items: center; gap: 6px; }
   /* Strip text scales with viewport width; two-word names wrap to two lines rather than truncating. */
   .slider output, .amb-item output { font-size: clamp(13px, 1.1vw, 16px); font-weight: 600; color: var(--text); font-variant-numeric: tabular-nums; white-space: nowrap; }
   .slider label {
     display: flex; flex-direction: column; align-items: center; gap: 3px; max-width: 100%;
-    font-size: clamp(13px, 1.25vw, 18px); font-weight: 600; line-height: 1.15; text-align: center; color: #b4bccb; cursor: pointer;
+    font-size: clamp(13px, 1.25vw, 18px); font-weight: 600; line-height: 1.15; text-align: center; color: color-mix(in srgb, var(--hue) 30%, #b4bccb); cursor: pointer;
   }
   :root { --strip-icon: clamp(26px, 2.6vw, 38px); }
   .slider label .ms, .amb-item button.chip .ms { font-size: var(--strip-icon); }
+  .slider label .ms { color: var(--hue); }
+  /* Ambience strips that are off dim their level + fader, so what's playing reads at a glance. */
+  .amb-item > output, .amb-item > .fader { transition: opacity .2s; }
+  .amb-item:not(.on) > output, .amb-item:not(.on) > .fader { opacity: .4; }
   /* Below ~1200px some names wrap to two lines; reserve that height on every Shape label so all faders stay equal length. */
   @media (max-width: 1199px) { .slider label { min-height: calc(var(--strip-icon) + 3px + 2.3em); justify-content: flex-start; } }
   .strip-name { max-width: 100%; overflow: hidden; text-overflow: ellipsis; overflow-wrap: anywhere; }
@@ -146,25 +205,25 @@
   }
   .fader input[type=range]::-webkit-slider-runnable-track {
     width: 4px; height: 100%; border-radius: 2px;
-    background: linear-gradient(to top, var(--accent) calc(var(--thumb) / 2 + (100% - var(--thumb)) * var(--p)), var(--track) 0);
+    background: linear-gradient(to top, var(--hue) calc(var(--thumb) / 2 + (100% - var(--thumb)) * var(--p)), var(--track) 0);
   }
   .fader input[type=range]::-moz-range-track { width: 4px; height: 100%; border-radius: 2px; background: var(--track); }
-  .fader input[type=range]::-moz-range-progress { width: 4px; border-radius: 2px; background: var(--accent); }
-  /* Fader cap: light rectangle with an accent centre line. */
+  .fader input[type=range]::-moz-range-progress { width: 4px; border-radius: 2px; background: var(--hue); }
+  /* Fader cap: light rectangle with an hue-colored centre line. */
   .fader input[type=range]::-webkit-slider-thumb {
     width: 30px; height: var(--cap); margin: 0 0 0 -13px; border: 0; border-radius: 3px;
-    background: linear-gradient(to bottom, #e6e9ef 0 42%, var(--accent) 42% 58%, #b9c0cc 58%);
+    background: linear-gradient(to bottom, #e6e9ef 0 42%, var(--hue) 42% 58%, #b9c0cc 58%);
     box-shadow: 0 2px 4px rgba(0, 0, 0, .5);
   }
   .fader input[type=range]::-moz-range-thumb {
     width: 30px; height: var(--cap); border: 0; border-radius: 3px;
-    background: linear-gradient(to bottom, #e6e9ef 0 42%, var(--accent) 42% 58%, #b9c0cc 58%);
+    background: linear-gradient(to bottom, #e6e9ef 0 42%, var(--hue) 42% 58%, #b9c0cc 58%);
     box-shadow: 0 2px 4px rgba(0, 0, 0, .5);
   }
   .fader input[type=range]:hover::-webkit-slider-thumb, .fader input[type=range]:active::-webkit-slider-thumb { transform: none; filter: brightness(1.12); }
   .fader input[type=range]:hover::-moz-range-thumb, .fader input[type=range]:active::-moz-range-thumb { transform: none; filter: brightness(1.12); }
-  .fader input[type=range]:focus-visible::-webkit-slider-thumb { box-shadow: 0 0 0 3px rgba(124, 196, 255, .45); }
-  .fader input[type=range]:focus-visible::-moz-range-thumb { box-shadow: 0 0 0 3px rgba(124, 196, 255, .45); }
+  .fader input[type=range]:focus-visible::-webkit-slider-thumb { box-shadow: 0 0 0 3px var(--hue-ring); }
+  .fader input[type=range]:focus-visible::-moz-range-thumb { box-shadow: 0 0 0 3px var(--hue-ring); }
 
   /* Range inputs: custom-drawn so the hit area (28px tall) is much bigger than the visible track.
      --p (0..1) is the filled fraction, kept in sync by fillRange() in JS. */
@@ -175,23 +234,23 @@
   }
   input[type=range]::-webkit-slider-runnable-track {
     height: 6px; border-radius: 3px;
-    background: linear-gradient(to right, var(--accent) calc(var(--thumb) / 2 + (100% - var(--thumb)) * var(--p)), var(--track) 0);
+    background: linear-gradient(to right, var(--hue) calc(var(--thumb) / 2 + (100% - var(--thumb)) * var(--p)), var(--track) 0);
   }
   input[type=range]::-moz-range-track { height: 6px; border-radius: 3px; background: var(--track); }
-  input[type=range]::-moz-range-progress { height: 6px; border-radius: 3px; background: var(--accent); }
+  input[type=range]::-moz-range-progress { height: 6px; border-radius: 3px; background: var(--hue); }
   input[type=range]::-webkit-slider-thumb {
     -webkit-appearance: none; width: var(--thumb); height: var(--thumb); margin-top: calc(3px - var(--thumb) / 2);
-    border-radius: 50%; background: var(--text); border: 4px solid var(--accent); transition: transform .1s;
+    border-radius: 50%; background: var(--text); border: 4px solid var(--hue); transition: transform .1s;
   }
   input[type=range]::-moz-range-thumb {
     box-sizing: border-box; width: var(--thumb); height: var(--thumb);
-    border-radius: 50%; background: var(--text); border: 4px solid var(--accent); transition: transform .1s;
+    border-radius: 50%; background: var(--text); border: 4px solid var(--hue); transition: transform .1s;
   }
   input[type=range]:hover::-webkit-slider-thumb, input[type=range]:active::-webkit-slider-thumb { transform: scale(1.15); }
   input[type=range]:hover::-moz-range-thumb, input[type=range]:active::-moz-range-thumb { transform: scale(1.15); }
   input[type=range]:focus { outline: none; }
-  input[type=range]:focus-visible::-webkit-slider-thumb { box-shadow: 0 0 0 4px rgba(124, 196, 255, .35); }
-  input[type=range]:focus-visible::-moz-range-thumb { box-shadow: 0 0 0 4px rgba(124, 196, 255, .35); }
+  input[type=range]:focus-visible::-webkit-slider-thumb { box-shadow: 0 0 0 4px var(--hue-ring); }
+  input[type=range]:focus-visible::-moz-range-thumb { box-shadow: 0 0 0 4px var(--hue-ring); }
 
   /* Ambience: channel strips — level / fader / toggle (icon + name, like a channel's mute button). */
   .amb { display: flex; gap: 8px; }
@@ -464,11 +523,11 @@ function setBpm(v) {
   scheduleAuto();
 }
 
-// Shape panel groups, in display order (left to right).
+// Shape panel groups, in display order (left to right). hue: the group's --hue (headings, borders, fader fills).
 const SLIDER_GROUPS = [
-  { key: 'sound',  label: 'Sound' },
-  { key: 'filter', label: 'Filter' },
-  { key: 'motion', label: 'Transitions' },
+  { key: 'sound',  label: 'Sound',       hue: 'var(--hue-sound)' },
+  { key: 'filter', label: 'Filter',      hue: 'var(--hue-filter)' },
+  { key: 'motion', label: 'Transitions', hue: 'var(--hue-motion)' },
 ];
 const SLIDERS = [
   // icon = Material Symbols name (must also be listed in the <link> icon_names); group = SLIDER_GROUPS key.
@@ -822,6 +881,7 @@ function buildUI() {
     const fs = document.createElement('fieldset');
     fs.className = 'slider-group';
     fs.style.setProperty('--n', SLIDERS.filter(s => s.group === g.key).length);
+    fs.style.setProperty('--hue', g.hue);
     fs.innerHTML = `<legend>${g.label}</legend><div class="group-sliders"></div>`;
     slEl.appendChild(fs);
     groupEls[g.key] = fs.lastElementChild;
@@ -942,6 +1002,7 @@ function render() {
     const on = state.ambience[b.dataset.amb].on;
     b.classList.toggle('active', on);
     b.setAttribute('aria-pressed', on);
+    b.closest('.amb-item').classList.toggle('on', on); // dims the strip's fader when off
   });
   $('#autoBtn').classList.toggle('active', state.auto);
   $('#autoBtn').setAttribute('aria-pressed', state.auto);
