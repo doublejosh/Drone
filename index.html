@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Drone Synth</title>
 <!-- Material Symbols, subset to the icons used. icon_names MUST stay alphabetical; add new names here or they render as text. -->
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200&icon_names=add,air,airwave,autoplay,avg_pace,compare_arrows,contrast,filter_alt,gradient,height,layers,local_fire_department,pest_control,play_arrow,rainy,remove,shuffle,spatial_audio,speed,stop,swap_vert,trending_up,volume_up,water,waves&display=block">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200&icon_names=add,air,airwave,autoplay,avg_pace,compare_arrows,contrast,filter_alt,gradient,height,layers,local_fire_department,pest_control,play_arrow,rainy,remove,shuffle,spatial_audio,speed,stop,swap_vert,trending_up,volume_up,waves&display=block">
 <style>
   :root {
     --bg: #0d0f14;
@@ -39,8 +39,10 @@
   .key { font-size: clamp(44px, 10vw, 72px); font-weight: 700; line-height: 1; letter-spacing: -.02em; }
   .key small { font-size: .45em; font-weight: 500; color: var(--accent); margin-left: .25em; }
   .meta { color: var(--muted); font-variant-numeric: tabular-nums; margin-top: 8px; }
-  .meta b { color: var(--text); font-weight: 600; }
-  canvas { grid-column: 1 / -1; width: 100%; height: 110px; display: block; border-radius: 8px; background: #0a0c10; }
+  .meta b { color: var(--text); font-weight: 600; white-space: nowrap; }
+  /* Canvas is absolutely positioned in its wrapper so its JS-set pixel size can't feed back into layout. */
+  .scope-wrap { grid-column: 1 / -1; position: relative; height: 110px; }
+  canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; border-radius: 8px; background: #0a0c10; }
 
   .play {
     width: 88px; height: 88px; border-radius: 50%;
@@ -96,16 +98,104 @@
   }
   input[type=number]:focus { outline: none; border-color: var(--accent); }
 
-  .sliders { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px 28px; }
-  .slider label { display: flex; justify-content: space-between; align-items: center; font-size: 13px; color: var(--muted); margin-bottom: 4px; }
-  .slider output { color: var(--text); font-variant-numeric: tabular-nums; }
-  .slider-name { display: inline-flex; align-items: center; gap: 6px; }
-  .slider-name .ms { font-size: 18px; }
-  input[type=range] { width: 100%; accent-color: var(--accent); }
+  /* Shape: a row of .slider-group fieldsets (each flexes by its slider count, --n), each a row of
+     vertical channel strips: value / fader / icon + name. */
+  .sliders { display: flex; flex-wrap: wrap; gap: 10px; }
+  .slider-group {
+    flex: var(--n) 1 0; min-width: calc(var(--n) * 58px); margin: 0; padding: 4px 6px 8px;
+    display: flex; flex-direction: column;
+    border: 1px solid var(--line); border-radius: 10px; background: rgba(255, 255, 255, .015);
+  }
+  .slider-group legend { padding: 0 6px; margin-left: 2px; font-size: 11px; letter-spacing: .12em; text-transform: uppercase; color: var(--accent); font-weight: 600; }
+  .group-sliders { flex: 1; display: flex; gap: 2px; }
+  .slider, .amb-item { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; align-items: center; gap: 6px; }
+  /* Strip text scales with viewport width; two-word names wrap to two lines rather than truncating. */
+  .slider output, .amb-item output { font-size: clamp(13px, 1.1vw, 16px); font-weight: 600; color: var(--text); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .slider label {
+    display: flex; flex-direction: column; align-items: center; gap: 3px; max-width: 100%;
+    font-size: clamp(13px, 1.25vw, 18px); font-weight: 600; line-height: 1.15; text-align: center; color: #b4bccb; cursor: pointer;
+  }
+  :root { --strip-icon: clamp(26px, 2.6vw, 38px); }
+  .slider label .ms, .amb-item button.chip .ms { font-size: var(--strip-icon); }
+  /* Below ~1200px some names wrap to two lines; reserve that height on every Shape label so all faders stay equal length. */
+  @media (max-width: 1199px) { .slider label { min-height: calc(var(--strip-icon) + 3px + 2.3em); justify-content: flex-start; } }
+  .strip-name { max-width: 100%; overflow: hidden; text-overflow: ellipsis; overflow-wrap: anywhere; }
 
-  .amb { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 14px 20px; }
-  .amb-item { display: flex; flex-direction: column; gap: 8px; }
-  .amb-item button.chip { padding: 7px 10px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
+  /* Vertical fader: native range rotated with writing-mode (max at top), drawn over a tick scale.
+     Ticks are inset by half the cap height so they line up with where the cap's centre line can travel.
+     Minor ticks every 10%, major ticks at 0 / 50 / 100%. */
+  .fader { position: relative; align-self: stretch; height: 150px; min-height: 60px; --cap: 16px; --tick: #2b3240; --tick-major: #465064; }
+  .fader::before, .fader::after {
+    content: ""; position: absolute; left: 50%; transform: translateX(-50%); pointer-events: none;
+    top: calc(var(--cap) / 2); bottom: calc(var(--cap) / 2 - 1px);
+  }
+  .fader::before {
+    width: 30px;
+    background: linear-gradient(var(--tick), var(--tick)) bottom / 100% 1px no-repeat,
+                repeating-linear-gradient(to bottom, var(--tick) 0 1px, transparent 1px 10%);
+  }
+  .fader::after {
+    width: 42px;
+    background: linear-gradient(var(--tick-major), var(--tick-major)) top / 100% 1px no-repeat,
+                linear-gradient(var(--tick-major), var(--tick-major)) center / 100% 1px no-repeat,
+                linear-gradient(var(--tick-major), var(--tick-major)) bottom / 100% 1px no-repeat;
+  }
+  .fader input[type=range] {
+    position: absolute; z-index: 1; inset: 0; margin: 0 auto; width: 34px; height: 100%;
+    writing-mode: vertical-lr; direction: rtl; --thumb: var(--cap);
+  }
+  .fader input[type=range]::-webkit-slider-runnable-track {
+    width: 4px; height: 100%; border-radius: 2px;
+    background: linear-gradient(to top, var(--accent) calc(var(--thumb) / 2 + (100% - var(--thumb)) * var(--p)), var(--track) 0);
+  }
+  .fader input[type=range]::-moz-range-track { width: 4px; height: 100%; border-radius: 2px; background: var(--track); }
+  .fader input[type=range]::-moz-range-progress { width: 4px; border-radius: 2px; background: var(--accent); }
+  /* Fader cap: light rectangle with an accent centre line. */
+  .fader input[type=range]::-webkit-slider-thumb {
+    width: 30px; height: var(--cap); margin: 0 0 0 -13px; border: 0; border-radius: 3px;
+    background: linear-gradient(to bottom, #e6e9ef 0 42%, var(--accent) 42% 58%, #b9c0cc 58%);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, .5);
+  }
+  .fader input[type=range]::-moz-range-thumb {
+    width: 30px; height: var(--cap); border: 0; border-radius: 3px;
+    background: linear-gradient(to bottom, #e6e9ef 0 42%, var(--accent) 42% 58%, #b9c0cc 58%);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, .5);
+  }
+  .fader input[type=range]:hover::-webkit-slider-thumb, .fader input[type=range]:active::-webkit-slider-thumb { transform: none; filter: brightness(1.12); }
+  .fader input[type=range]:hover::-moz-range-thumb, .fader input[type=range]:active::-moz-range-thumb { transform: none; filter: brightness(1.12); }
+  .fader input[type=range]:focus-visible::-webkit-slider-thumb { box-shadow: 0 0 0 3px rgba(124, 196, 255, .45); }
+  .fader input[type=range]:focus-visible::-moz-range-thumb { box-shadow: 0 0 0 3px rgba(124, 196, 255, .45); }
+
+  /* Range inputs: custom-drawn so the hit area (28px tall) is much bigger than the visible track.
+     --p (0..1) is the filled fraction, kept in sync by fillRange() in JS. */
+  input[type=range] {
+    -webkit-appearance: none; appearance: none;
+    width: 100%; height: 28px; margin: 0; padding: 0; background: transparent; cursor: pointer;
+    --p: .5; --thumb: 20px; --track: #2a3140;
+  }
+  input[type=range]::-webkit-slider-runnable-track {
+    height: 6px; border-radius: 3px;
+    background: linear-gradient(to right, var(--accent) calc(var(--thumb) / 2 + (100% - var(--thumb)) * var(--p)), var(--track) 0);
+  }
+  input[type=range]::-moz-range-track { height: 6px; border-radius: 3px; background: var(--track); }
+  input[type=range]::-moz-range-progress { height: 6px; border-radius: 3px; background: var(--accent); }
+  input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none; width: var(--thumb); height: var(--thumb); margin-top: calc(3px - var(--thumb) / 2);
+    border-radius: 50%; background: var(--text); border: 4px solid var(--accent); transition: transform .1s;
+  }
+  input[type=range]::-moz-range-thumb {
+    box-sizing: border-box; width: var(--thumb); height: var(--thumb);
+    border-radius: 50%; background: var(--text); border: 4px solid var(--accent); transition: transform .1s;
+  }
+  input[type=range]:hover::-webkit-slider-thumb, input[type=range]:active::-webkit-slider-thumb { transform: scale(1.15); }
+  input[type=range]:hover::-moz-range-thumb, input[type=range]:active::-moz-range-thumb { transform: scale(1.15); }
+  input[type=range]:focus { outline: none; }
+  input[type=range]:focus-visible::-webkit-slider-thumb { box-shadow: 0 0 0 4px rgba(124, 196, 255, .35); }
+  input[type=range]:focus-visible::-moz-range-thumb { box-shadow: 0 0 0 4px rgba(124, 196, 255, .35); }
+
+  /* Ambience: channel strips — level / fader / toggle (icon + name, like a channel's mute button). */
+  .amb { display: flex; gap: 8px; }
+  .amb-item button.chip { align-self: stretch; padding: 6px 0; display: flex; flex-direction: column; align-items: center; gap: 3px; font-size: clamp(12px, 1.05vw, 15px); line-height: 1.15; letter-spacing: -.01em; }
 
   /* Icons: Material Symbols ligatures (<span class="ms">name</span>) + inline SVG wave glyphs. */
   .ms {
@@ -122,18 +212,89 @@
   .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
   .play .ms { font-size: 44px; }
 
-  .hint { color: var(--muted); font-size: 12px; margin-top: 16px; text-align: center; }
+  .titlebar h1 { margin: 0 0 16px; }
+  .hint { color: var(--muted); font-size: 12px; margin: 16px 0 0; text-align: center; }
   kbd { border: 1px solid var(--line); border-radius: 4px; padding: 1px 5px; font-size: 11px; }
 
   @media (max-width: 560px) {
     .piano { height: 110px; }
     .play { width: 72px; height: 72px; }
   }
+
+  /* App layout: when the viewport is big enough, every panel fits on screen and the page never scrolls.
+     Compact display bar on top, Key + Tone, then the mixer row (Shape + Ambience faders absorb
+     spare height), a slim full-width Slots chain, and a one-line status bar with the shortcuts. */
+  @media (min-width: 900px) and (min-height: 600px) {
+    html, body { height: 100%; overflow: hidden; }
+    main {
+      max-width: none; height: 100vh; height: 100dvh; padding: 12px 16px 8px;
+      display: grid; gap: 12px;
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(360px, 1fr);
+      grid-template-rows: auto auto minmax(0, 1fr) auto auto;
+      grid-template-areas:
+        "bar   display display"
+        "key   key     tone"
+        "shape shape   amb"
+        "slots slots   slots"
+        "hint  hint    hint";
+    }
+    .titlebar { grid-area: bar; align-self: center; }
+    .titlebar h1 { margin: 0; }
+    .hint { grid-area: hint; margin: 0; text-align: right; }
+    section { margin: 0; padding: 14px 16px; min-height: 0; overflow: auto; }
+
+    /* Display shrinks to a single transport strip: key name | mini scope | play. */
+    .display { grid-area: display; grid-template-columns: auto minmax(0, 1fr) auto; padding: 8px 10px 8px 16px; gap: 16px; }
+    .key { font-size: 32px; }
+    .meta { font-size: 12px; margin-top: 2px; }
+    .scope-wrap { grid-column: auto; order: 1; height: 48px; }
+    .play { order: 2; width: 48px; height: 48px; }
+    .play .ms { font-size: 28px; }
+
+    /* Key: piano on the left, mode and octave rows stacked to its right. */
+    /* Key: piano on the left; mode and octave rows to its right share the piano's height and split their width evenly (like Tone). */
+    .p-key { grid-area: key; display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(240px, 1fr); grid-template-rows: auto 1fr 1fr; gap: 10px 20px; }
+    .p-key h2 { grid-column: 1 / -1; margin: 0; }
+    .p-key .piano { grid-row: 2 / span 2; height: clamp(90px, 16vh, 180px); }
+    .p-key .row { grid-column: 2; margin: 0; gap: 8px; flex-wrap: nowrap; align-items: stretch; }
+    .p-key .row .label { align-self: center; }
+    .p-key .row .spacer { display: none; }
+    .p-key .row button.chip { flex: 1 1 0; min-width: 0; min-height: 40px; padding: 4px; font-size: clamp(14px, 1.2vw, 18px); }
+    .p-key #randomBtn { flex-grow: .6; }
+    .p-key #randomBtn .ms { font-size: clamp(20px, 1.8vw, 26px); }
+    /* Tone: both rows share the panel height, and the buttons split each row's width evenly. */
+    .p-tone { grid-area: tone; display: flex; flex-direction: column; gap: 10px; }
+    .p-tone h2 { margin: 0; }
+    .p-tone .row { flex: 1; margin: 0; gap: 8px; flex-wrap: nowrap; align-items: stretch; }
+    .p-tone .row .label { align-self: center; }
+    .p-tone .row button.chip { flex: 1 1 0; min-width: 0; min-height: 40px; padding: 4px; font-size: clamp(14px, 1.2vw, 18px); white-space: nowrap; }
+    .p-tone .wave-svg { width: clamp(30px, 2.8vw, 46px); height: auto; aspect-ratio: 24 / 18; stroke-width: 1.75; }
+
+    /* Mixer row: faders stretch to fill the row's height. */
+    .p-shape, .p-amb { display: flex; flex-direction: column; }
+    .p-shape { grid-area: shape; }
+    .p-amb { grid-area: amb; }
+    .sliders { flex: 1; flex-wrap: nowrap; min-height: 0; }
+    .amb { flex: 1; min-height: 0; }
+    .fader { flex: 1; height: auto; }
+
+    /* Slots: one slim line for the chain, tempo controls pinned right. */
+    .p-slots { grid-area: slots; display: flex; align-items: center; gap: 8px 20px; padding: 10px 16px; }
+    .p-slots h2 { margin: 0; }
+    .slots-bar { flex: 1; }
+    .slots-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 32px; }
+    .slots-bar > .row { margin: 0; }
+    .slots-bar > .row:first-child { flex: 1 1 400px; }
+    .slots-bar > .tempo { flex: 0 1 380px; }
+    .slot-hint { display: none; } /* already in the status bar */
+  }
 </style>
 </head>
 <body>
 <main>
-  <h1>Drone Synth</h1>
+  <header class="titlebar">
+    <h1>Drone Synth</h1>
+  </header>
 
   <div class="display">
     <div>
@@ -141,17 +302,17 @@
       <div class="meta">Root <b id="rootHz">110.0 Hz</b> · Chord <b id="chordTones">A · C · E</b></div>
     </div>
     <button class="play" id="playBtn" aria-pressed="false" aria-label="Play"><span class="ms" aria-hidden="true">play_arrow</span></button>
-    <canvas id="scope"></canvas>
+    <div class="scope-wrap"><canvas id="scope"></canvas></div>
   </div>
 
-  <section>
+  <section class="p-key">
     <h2>Key</h2>
     <div class="piano" id="notes"></div>
     <div class="row">
       <span class="label ms" role="img" aria-label="Mode" title="Mode">contrast</span>
       <button class="chip" data-mode="major">Major</button>
       <button class="chip" data-mode="minor">Minor</button>
-      <span style="flex:1"></span>
+      <span class="spacer" style="flex:1"></span>
       <button class="chip icon" id="randomBtn" title="Random key" aria-label="Random key"><span class="ms" aria-hidden="true">shuffle</span></button>
     </div>
     <div class="row">
@@ -160,14 +321,15 @@
     </div>
   </section>
 
-  <section>
+  <section class="p-slots">
     <h2>Slots</h2>
+    <div class="slots-bar">
     <div class="row" style="margin-top:0">
       <span id="slots" style="display:contents"></span>
       <button class="chip icon" id="addSlot" title="Add slot (copy of current)" aria-label="Add slot"><span class="ms" aria-hidden="true">add</span></button>
       <button class="chip icon" id="removeSlot" title="Remove current slot" aria-label="Remove slot"><span class="ms" aria-hidden="true">remove</span></button>
       <span style="flex:1"></span>
-      <span class="label"><kbd>Shift</kbd> next slot</span>
+      <span class="label slot-hint"><kbd>Shift</kbd> next slot</span>
     </div>
     <div class="row tempo">
       <button class="chip toggle icon" id="autoBtn" aria-pressed="false" title="Auto-advance slots" aria-label="Auto-advance slots"><span class="ms" aria-hidden="true">autoplay</span></button>
@@ -176,9 +338,10 @@
       <input type="number" id="bpmInput" min="1" max="240" step="1" aria-label="Tempo in BPM">
       <span class="label">BPM</span>
     </div>
+    </div>
   </section>
 
-  <section>
+  <section class="p-tone">
     <h2>Tone</h2>
     <div class="row" style="margin-top:0">
       <span class="label ms" role="img" aria-label="Wave" title="Wave">airwave</span>
@@ -193,12 +356,12 @@
     </div>
   </section>
 
-  <section>
+  <section class="p-shape">
     <h2>Shape</h2>
     <div class="sliders" id="sliders"></div>
   </section>
 
-  <section>
+  <section class="p-amb">
     <h2>Ambience</h2>
     <div class="amb" id="ambience"></div>
   </section>
@@ -238,7 +401,7 @@ const state = {
   // Ambience layers (see SOUNDS): on/off + level 0..1
   ambience: {
     rain: { on: false, level: 0.5 }, wind: { on: false, level: 0.5 }, waves: { on: false, level: 0.5 },
-    stream: { on: false, level: 0.5 }, fire: { on: false, level: 0.5 }, crickets: { on: false, level: 0.4 },
+    fire: { on: false, level: 0.5 }, crickets: { on: false, level: 0.4 },
   },
   slots: [{ note: 9, mode: 'minor', octave: 2 }, { note: 2, mode: 'minor', octave: 2 }],
 };
@@ -301,16 +464,22 @@ function setBpm(v) {
   scheduleAuto();
 }
 
+// Shape panel groups, in display order (left to right).
+const SLIDER_GROUPS = [
+  { key: 'sound',  label: 'Sound' },
+  { key: 'filter', label: 'Filter' },
+  { key: 'motion', label: 'Transitions' },
+];
 const SLIDERS = [
-  // icon = Material Symbols name (must also be listed in the <link> icon_names); label = tooltip + screen-reader text.
-  { key: 'volume',   label: 'Volume',    icon: 'volume_up',      min: 0,    max: 1,    step: 0.01, fmt: v => Math.round(v * 100) + '%' },
-  { key: 'cutoff',   label: 'Filter',    icon: 'filter_alt',     min: 80,   max: 8000, step: 1,    fmt: v => Math.round(v) + ' Hz', log: true },
-  { key: 'detune',   label: 'Detune',    icon: 'compare_arrows', min: 0,    max: 30,   step: 0.5,  fmt: v => v + ' ¢' },
-  { key: 'lfoRate',  label: 'LFO rate',  icon: 'speed',          min: 0.01, max: 2,    step: 0.01, fmt: v => v.toFixed(2) + ' Hz', log: true },
-  { key: 'lfoDepth', label: 'LFO depth', icon: 'height',         min: 0,    max: 2000, step: 1,    fmt: v => Math.round(v) + ' Hz' },
-  { key: 'reverb',   label: 'Reverb',    icon: 'spatial_audio',  min: 0,    max: 1,    step: 0.01, fmt: v => Math.round(v * 100) + '%' },
-  { key: 'glide',    label: 'Glide',     icon: 'trending_up',    min: 0,    max: 6,    step: 0.1,  fmt: v => v.toFixed(1) + ' s' },
-  { key: 'waveFade', label: 'Tone fade', icon: 'gradient',       min: 0,    max: 6,    step: 0.1,  fmt: v => v.toFixed(1) + ' s' },
+  // icon = Material Symbols name (must also be listed in the <link> icon_names); group = SLIDER_GROUPS key.
+  { key: 'volume',   group: 'sound',  label: 'Volume',    icon: 'volume_up',      min: 0,    max: 1,    step: 0.01, fmt: v => Math.round(v * 100) + '%' },
+  { key: 'detune',   group: 'sound',  label: 'Detune',    icon: 'compare_arrows', min: 0,    max: 30,   step: 0.5,  fmt: v => v + ' ¢' },
+  { key: 'reverb',   group: 'sound',  label: 'Reverb',    icon: 'spatial_audio',  min: 0,    max: 1,    step: 0.01, fmt: v => Math.round(v * 100) + '%' },
+  { key: 'cutoff',   group: 'filter', label: 'Cutoff',    icon: 'filter_alt',     min: 80,   max: 8000, step: 1,    fmt: v => Math.round(v) + ' Hz', log: true },
+  { key: 'lfoRate',  group: 'filter', label: 'LFO rate',  icon: 'speed',          min: 0.01, max: 2,    step: 0.01, fmt: v => v.toFixed(2) + ' Hz', log: true },
+  { key: 'lfoDepth', group: 'filter', label: 'LFO depth', icon: 'height',         min: 0,    max: 2000, step: 1,    fmt: v => Math.round(v) + ' Hz' },
+  { key: 'glide',    group: 'motion', label: 'Glide',     icon: 'trending_up',    min: 0,    max: 6,    step: 0.1,  fmt: v => v.toFixed(1) + ' s' },
+  { key: 'waveFade', group: 'motion', label: 'Tone fade', icon: 'gradient',       min: 0,    max: 6,    step: 0.1,  fmt: v => v.toFixed(1) + ' s' },
 ];
 
 // ---------- Music helpers ----------
@@ -575,16 +744,6 @@ const SOUNDS = {
       mod(o, 650, lp.frequency); mod(o, 0.48, swell.gain); mod(o, 0.04, foamG.gain);
     });
   }},
-  stream: { label: 'Stream', icon: 'water', build(out) {
-    const hp = filt('highpass', 300);
-    loopSrc(ambBuf('white')).connect(hp);
-    chain(hp, filt('lowpass', 5000), gainN(0.05), out);                                              // bed
-    [[700, 0.9], [1250, 1.7], [2100, 2.9], [3300, 4.3]].forEach(([f, r]) => {                       // babble
-      const bp = filt('bandpass', f, 7);
-      chain(hp, bp, gainN(0.55), out);
-      mod(lfoOsc(r), f * 0.35, bp.frequency);
-    });
-  }},
   fire: { label: 'Fire', icon: 'local_fire_department', build(out) {
     const roar = gainN(0.7);
     chain(loopSrc(ambBuf('brown')), filt('lowpass', 220), roar, out);
@@ -656,14 +815,25 @@ function buildUI() {
   document.querySelectorAll('[data-voice]').forEach(b =>
     b.onclick = () => { const v = b.dataset.voice; state.voices[v] = !state.voices[v]; applyParams(); render(); });
 
-  const slEl = $('#sliders');
+  // One <fieldset> per SLIDER_GROUPS entry, holding that group's fader strips in SLIDERS order.
+  // --n (slider count) sets the group's flex share so every strip ends up the same width.
+  const slEl = $('#sliders'), groupEls = {};
+  SLIDER_GROUPS.forEach(g => {
+    const fs = document.createElement('fieldset');
+    fs.className = 'slider-group';
+    fs.style.setProperty('--n', SLIDERS.filter(s => s.group === g.key).length);
+    fs.innerHTML = `<legend>${g.label}</legend><div class="group-sliders"></div>`;
+    slEl.appendChild(fs);
+    groupEls[g.key] = fs.lastElementChild;
+  });
   SLIDERS.forEach(s => {
     const wrap = document.createElement('div');
     wrap.className = 'slider';
     const id = 'sl-' + s.key;
-    wrap.innerHTML = `<label for="${id}"><span class="slider-name"><span class="ms" aria-hidden="true">${s.icon}</span>${s.label}</span><output id="${id}-out"></output></label>
-      <input type="range" id="${id}" min="0" max="1000" step="1">`;
-    slEl.appendChild(wrap);
+    wrap.innerHTML = `<label for="${id}" title="${s.label}"><span class="ms" aria-hidden="true">${s.icon}</span><span class="strip-name">${s.label}</span></label>
+      <output id="${id}-out" for="${id}"></output>
+      <div class="fader"><input type="range" id="${id}" min="0" max="1000" step="1"></div>`;
+    groupEls[s.group].appendChild(wrap);
     const input = wrap.querySelector('input'), out = wrap.querySelector('output');
     // Log sliders map 0..1000 exponentially; linear sliders map directly.
     const toVal = p => {
@@ -694,14 +864,19 @@ function buildUI() {
     const s = state.ambience[key];
     const item = document.createElement('div');
     item.className = 'amb-item';
-    item.innerHTML = `<button class="chip toggle" data-amb="${key}" aria-pressed="false"><span class="ms" aria-hidden="true">${snd.icon}</span>${snd.label}</button>
-      <input type="range" min="0" max="1" step="0.01" aria-label="${snd.label} level">`;
-    const range = item.querySelector('input');
+    item.innerHTML = `<button class="chip toggle" data-amb="${key}" aria-pressed="false" title="${snd.label}"><span class="ms" aria-hidden="true">${snd.icon}</span><span class="strip-name">${snd.label}</span></button>
+      <output></output>
+      <div class="fader"><input type="range" min="0" max="1" step="0.01" aria-label="${snd.label} level"></div>`;
+    const range = item.querySelector('input'), out = item.querySelector('output');
+    const showLevel = () => { out.textContent = Math.round(s.level * 100) + '%'; };
     range.value = s.level;
+    showLevel();
     item.querySelector('button').onclick = () => { s.on = !s.on; applyAmbience(); render(); };
-    range.oninput = () => { s.level = +range.value; applyAmbience(); };
+    range.oninput = () => { s.level = +range.value; showLevel(); applyAmbience(); };
     ambEl.appendChild(item);
   }
+
+  function fillRange(r) { r.style.setProperty('--p', (r.value - r.min) / (r.max - r.min)); }
 
   $('#addSlot').onclick = addSlot;
   $('#removeSlot').onclick = removeSlot;
@@ -714,9 +889,14 @@ function buildUI() {
   bpmRange.oninput = () => { setBpm(+bpmRange.value); bpmInput.value = state.bpm; };
   bpmInput.oninput = () => {
     const v = parseFloat(bpmInput.value);
-    if (v >= BPM_MIN && v <= BPM_MAX) { setBpm(v); bpmRange.value = state.bpm; }
+    if (v >= BPM_MIN && v <= BPM_MAX) { setBpm(v); bpmRange.value = state.bpm; fillRange(bpmRange); }
   };
-  bpmInput.onchange = () => { setBpm(parseFloat(bpmInput.value)); bpmInput.value = bpmRange.value = state.bpm; };
+  bpmInput.onchange = () => { setBpm(parseFloat(bpmInput.value)); bpmInput.value = bpmRange.value = state.bpm; fillRange(bpmRange); };
+
+  // Range track fill (CSS --p): sync on every user drag, and once now for the initial values.
+  // Code that sets a range's .value programmatically must call fillRange(el) itself.
+  document.addEventListener('input', e => { if (e.target.type === 'range') fillRange(e.target); });
+  document.querySelectorAll('input[type=range]').forEach(fillRange);
 
   document.addEventListener('keydown', e => {
     if (e.target.type === 'number') return; // let the BPM box receive typing, Space, arrows, etc.

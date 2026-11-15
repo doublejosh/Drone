@@ -15,13 +15,39 @@ To check a change, load the page, press Play, and exercise the control you touch
 | Lines (approx) | Section | Notes |
 |---|---|---|
 | `<style>` | Theme + layout | Colors are CSS vars on `:root` (`--bg`, `--panel`, `--accent`, `--accent-2`…). Dark-only. Breakpoint at 560px shortens the piano and the Play button. Key picker is a one-octave piano (`.piano`): white keys are flex items, and black keys are absolutely positioned. Each black key's `left` is computed in `buildUI()` from `BLACK_AFTER_WHITE` and the `--gap`/`--bw` CSS vars. Black keys are out of flex flow, so DOM and tab order stay chromatic (C, C♯, D…). |
-| `<main>` markup | Static shell | `.display` (key name, Hz, chord, Play button, `<canvas id="scope">`), then five `<section>`s: **Key**, **Slots**, **Tone**, **Shape**, **Ambience**. Containers `#notes`, `#octaves`, `#slots`, `#waves`, `#sliders`, `#ambience` are filled by JS. Mode and voice chips are hard-coded in HTML. |
+| `<main>` markup | Static shell | `.titlebar` (h1), `.display` (key name, Hz, chord, Play button, `.scope-wrap > <canvas id="scope">`), then `<section>`s: **Key** (`.p-key`), **Slots** (`.p-slots`, rows wrapped in `.slots-bar`), **Tone** (`.p-tone`), **Shape** (`.p-shape`), **Ambience** (`.p-amb`), then the shortcut `.hint`. DOM order is the stacked/mobile order, and the app grid places panels by `grid-area`. Containers `#notes`, `#octaves`, `#slots`, `#waves`, `#sliders`, `#ambience` are filled by JS. Mode and voice chips are hard-coded in HTML. |
 | `NOTES`, `WAVES`, `VOICES`, `state`, `SLIDERS` | Config + state | The single source of truth. Most features start here. |
 | Music helpers | `midiOf`, `hz`, `thirdOffset`, `voiceOffset` | MIDI math; A4 = 440 Hz; octave numbering is scientific (C4 = MIDI 60). |
 | Audio engine | `initAudio`, `applyPitch`, `applyParams`, `setPlaying`, `makeImpulse` | Graph is built once, lazily, on first play. |
 | Ambience | `SOUNDS`, `AMB_BUFFERS`, `makeLoop`, `applyAmbience`, graph helpers (`chain`, `gainN`, `filt`, `lfoOsc`, `mod`, `loopSrc`) | Procedural nature-sound layers. See **Ambience** below. |
 | UI | `buildUI`, `render` | `buildUI` wires events once; `render` syncs labels and `.active` classes from `state`. |
 | Oscilloscope | `draw` | `requestAnimationFrame` loop reading `analyser` time-domain data, triggered on a rising zero crossing. |
+
+## App layout (no page scroll)
+
+At `min-width: 900px` and `min-height: 600px`, `<main>` becomes a full-viewport CSS grid and `body` is `overflow: hidden`:
+
+```
+"bar   display display"   title | compact transport strip (key name · mini scope · play)
+"key   key     tone"      auto row: piano (height clamp(90px, 16vh, 180px)) + mode/octave beside it.
+                          Key's mode/octave rows and Tone's wave/voice rows stretch to fill their panel:
+                          rows share the height, and buttons are `flex: 1 1 0`.
+"shape shape   amb"       1fr row, the mixer: vertical faders stretch to fill it
+"slots slots   slots"     one slim line: heading, slot chain, tempo pinned right
+"hint  hint    hint"      status bar with keyboard shortcuts
+```
+
+- The display is deliberately small, since it's the least important panel. Its key name, scope and play button sit in one row, with CSS `order` placing the scope between the text and the button.
+- Below that size, the media query doesn't apply and the page falls back to the stacked, scrolling layout (phones). There the faders have a fixed 150px height and the groups wrap.
+- Sections get `min-height: 0; overflow: auto`, so if a panel's content outgrows its cell it scrolls internally instead of the page.
+- The canvas is absolutely positioned inside `.scope-wrap`. `draw()` sets its pixel size from `clientHeight`, and without the wrapper that would feed back into grid sizing.
+- Adding controls: check that 1024×640 still fits. There, a strip is about 46px wide (Ambience) to 60px (Shape), and the faders are about 110px tall. Each new slider or sound narrows every strip in its panel. Anything added to the Key/Tone or Slots rows takes height away from the faders.
+
+### Faders and range sliders
+All `input[type=range]` are custom-drawn. The filled part of the track (WebKit) comes from a CSS var `--p` (0..1), which `fillRange(el)` sets. A document-level `input` listener covers user drags, but **code that sets a range's `.value` must call `fillRange(el)` itself**. Firefox uses `::-moz-range-progress` and needs no JS.
+- **Vertical faders** (Shape and Ambience): a range inside `.fader` is rotated with `writing-mode: vertical-lr; direction: rtl`, so max is at the top. Its cap is a 30×16 rectangle (`--cap`). The tick scale is `.fader::before` (minor ticks every 10%) and `::after` (major ticks at 0/50/100%), inset by `--cap / 2` so the ticks line up with the cap's centre line.
+- **Channel strips:** strips read top to bottom. A Shape strip is `label` (icon + name) / `output` / `.fader`. An Ambience strip is toggle chip (icon + name) / `output` (level %) / `.fader`. Strip text is large and scales with `vw` via `clamp()`: names run 13–18px, values 13–16px, and icons use `--strip-icon` (26–38px). Two-word names wrap to two lines on narrow screens. Below 1200px every Shape label reserves two lines of height so the faders stay equal length. Keep new names short; one word is best for Ambience.
+- **Horizontal** (only BPM now): a 28px hit area, a 6px track and a 20px round thumb.
 
 ## State model
 
@@ -93,7 +119,6 @@ SOUNDS[key].build(out) graph ─> per-sound gain (level², 0 when off; τ 0.4s) 
   - Rain: hiss, low body and drops.
   - Wind: band-passed brown noise with slow LFOs on its frequency and gain (gusts), plus a resonant whistle.
   - Waves: two swell layers at unrelated rates. One LFO per layer drives loudness, brightness and foam together.
-  - Stream: 4 resonant band-passes with faster LFOs (babble).
   - Fire: flickering low roar plus crackle.
   - Crickets: the chirp buffer, high-passed.
 
@@ -108,7 +133,7 @@ The toggle and level slider are generated by `buildUI()`. Internal gains are set
 
 ### Add a slider parameter
 1. Add a default to `state` (e.g. `resonance: 2`).
-2. Add an entry to `SLIDERS`: `{ key, label, icon, min, max, step, fmt, log? }`. Add `icon` to the font `<link>`'s `icon_names` too (see **Icons**).
+2. Add an entry to `SLIDERS`: `{ key, group, label, icon, min, max, step, fmt, log? }`. `group` is a `SLIDER_GROUPS` key: `sound` (Volume, Detune, Reverb), `filter` (Cutoff, LFO rate, LFO depth) or `motion` (Glide, Tone fade, shown as "Transitions"). Each group renders as a `<fieldset class="slider-group">` of fader strips. Groups sit side by side, and each one's flex share is its slider count (`--n`), so all strips are the same width. Order within a group follows `SLIDERS` order. Add `icon` to the font `<link>`'s `icon_names` too (see **Icons**).
    - The `<input>` always runs 0–1000 internally. `toVal` and `toPos` map that range to the real value.
    - Set `log: true` for frequency- or time-like ranges. `min` must be > 0 when `log` is set.
 3. Use `state.<key>` inside `applyParams()`, and smooth it with `setTargetAtTime(…, t, tc)`.
@@ -166,7 +191,7 @@ Most labels are icons, with the text kept as `title` tooltips and screen-reader 
 - Icons are outlined by default and switch to filled when their button is `.active` (and on the Play button when it's playing), via `font-variation-settings`.
 - **Data-driven icons:**
   - `SLIDERS[].icon`, shown beside the visible `label` text. Shape sliders keep their text labels on purpose;
-  - `SOUNDS[key].icon`, shown beside the visible `label` text on the Ambience toggles;
+  - `SOUNDS[key].icon`, shown above the visible `label` text on the Ambience toggles (on top of each fader);
   - waveform buttons use inline SVG paths in `WAVE_PATHS` (viewBox 0 0 24 14), since Material Symbols has no waveform glyphs.
 - **Kept as text on purpose:** Shape slider labels and Ambience toggles (icon + text), note names, Major/Minor, octave numbers, voice intervals (Sub/3rd/5th/Octave ↑), slot chips, section headings and the BPM unit.
 - If the font fails to load (e.g. offline), icons degrade to their ligature names as text. The app still works.
